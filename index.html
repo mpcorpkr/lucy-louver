@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>루시(Lucy) 루버 통합관리 시스템</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--lucy:#2563eb;--lucy-dark:#1e40af;--lucy-light:#dbeafe;--sidebar-w:220px}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Malgun Gothic',sans-serif;background:#f1f5f9;color:#1e293b}
+/* Login */
+#loginScreen{position:fixed;inset:0;background:linear-gradient(135deg,#1e40af,#0ea5e9);display:flex;align-items:center;justify-content:center;z-index:9999}
+.login-card{background:#fff;border-radius:20px;padding:40px 36px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}
+.login-logo{font-size:2.2rem;font-weight:800;color:var(--lucy);letter-spacing:-1px}
+.login-sub{font-size:.8rem;color:#64748b;margin-bottom:24px}
+.user-btn{width:100%;padding:10px;margin-bottom:8px;border:2px solid #e2e8f0;border-radius:10px;background:#fff;cursor:pointer;font-size:1rem;transition:all .2s;text-align:left;display:flex;align-items:center;gap:10px}
+.user-btn:hover{border-color:var(--lucy);background:var(--lucy-light)}
+.user-btn.active{border-color:var(--lucy);background:var(--lucy-light)}
+.user-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;color:#fff;flex-shrink:0}
+/* Sidebar */
+#app{display:none;min-height:100vh}
+#sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100%;background:#fff;border-right:1px solid #e2e8f0;z-index:100;display:flex;flex-direction:column;transition:transform .3s}
+.sidebar-logo{padding:20px 16px 16px;border-bottom:1px solid #e2e8f0}
+.sidebar-logo .logo-text{font-size:1.1rem;font-weight:800;color:var(--lucy)}
+.sidebar-logo .logo-sub{font-size:.7rem;color:#94a3b8}
+.nav-menu{flex:1;padding:8px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:11px 18px;cursor:pointer;font-size:.9rem;color:#475569;transition:all .2s;border-left:3px solid transparent}
+.nav-item:hover{background:#f8fafc;color:var(--lucy)}
+.nav-item.active{background:var(--lucy-light);color:var(--lucy);font-weight:600;border-left-color:var(--lucy)}
+.nav-item i{font-size:1.1rem;width:20px}
+.sidebar-user{padding:14px 16px;border-top:1px solid #e2e8f0;font-size:.8rem}
+.sidebar-user .uname{font-weight:700;color:#1e293b}
+.sidebar-user .urole{color:#64748b;font-size:.75rem}
+/* Main */
+#main{margin-left:var(--sidebar-w);min-height:100vh;padding:24px}
+.page-header{margin-bottom:20px}
+.page-title{font-size:1.4rem;font-weight:700;color:#1e293b}
+/* Cards */
+.card{border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.stat-card{border-radius:12px;padding:20px;color:#fff;position:relative;overflow:hidden}
+.stat-card .stat-num{font-size:1.8rem;font-weight:800}
+.stat-card .stat-label{font-size:.8rem;opacity:.85}
+.stat-card i{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:2.5rem;opacity:.3}
+/* Table */
+.table-responsive{border-radius:10px;overflow:hidden}
+table{margin:0}
+thead th{background:#f8fafc;font-size:.82rem;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap;padding:10px 12px}
+tbody td{font-size:.85rem;vertical-align:middle;padding:10px 12px;border-color:#f1f5f9}
+tbody tr:hover{background:#f8fafc}
+/* Form */
+.form-label{font-size:.85rem;font-weight:600;color:#374151;margin-bottom:4px}
+.form-control,.form-select{font-size:.85rem;border-color:#d1d5db;border-radius:8px}
+.form-control:focus,.form-select:focus{border-color:var(--lucy);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+/* Buttons */
+.btn-lucy{background:var(--lucy);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:.88rem;font-weight:600;cursor:pointer;transition:background .2s}
+.btn-lucy:hover{background:var(--lucy-dark);color:#fff}
+/* Modal */
+.modal-header{background:linear-gradient(135deg,var(--lucy),#0ea5e9);color:#fff;border-radius:12px 12px 0 0}
+.modal-header .btn-close{filter:invert(1)}
+/* Toast */
+#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast-msg{background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:.85rem;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:slideUp .3s ease}
+.toast-msg.success{background:#059669}
+.toast-msg.error{background:#dc2626}
+.toast-msg.warning{background:#d97706}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+/* Mobile */
+#mobileOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99}
+#mobileToggle{display:none;position:fixed;top:16px;left:16px;z-index:200;background:var(--lucy);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:1.1rem;cursor:pointer}
+@media(max-width:768px){
+  #sidebar{transform:translateX(-100%)}
+  #sidebar.open{transform:translateX(0)}
+  #mobileToggle{display:block}
+  #mobileOverlay.show{display:block}
+  #main{margin-left:0;padding:16px;padding-top:60px}
+}
+/* Widget */
+.widget{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:20px}
+.widget-title{font-size:.85rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
+.todo-item{padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:.85rem;display:flex;align-items:center;gap:8px}
+.todo-item:last-child{border-bottom:none}
+/* Inventory */
+.inv-item{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px}
+.inv-item .item-name{font-weight:700;color:#1e293b;margin-bottom:4px;font-size:.9rem}
+.inv-qty{font-size:1.4rem;font-weight:800;color:var(--lucy)}
+.inv-qty.low{color:#dc2626}
+/* Progress */
+.progress{height:8px;border-radius:4px}
+/* Google banner */
+#googleConnectBanner{background:#fff3cd;border:1px solid #ffc107;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;font-size:.88rem}
+/* Pages */
+.page-section{display:none}
+.page-section.active{display:block}
+</style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">🪟 Lucy</div>
+    <div class="mb-1" style="font-size:.95rem;font-weight:700;color:#1e293b">루버 통합관리 시스템</div>
+    <div class="login-sub">사용자를 선택하세요</div>
+    <div id="userButtons"></div>
+    <div id="pwSection" style="display:none;margin-top:16px">
+      <div class="input-group">
+        <input type="password" id="pwInput" class="form-control" placeholder="비밀번호 입력" maxlength="20">
+        <button class="btn btn-lucy" onclick="doLogin()">로그인</button>
+      </div>
+      <div id="pwError" style="color:#dc2626;font-size:.8rem;margin-top:6px;display:none">비밀번호가 틀렸습니다.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MOBILE ===== -->
+<button id="mobileToggle" onclick="toggleSidebar()"><i class="bi bi-list"></i></button>
+<div id="mobileOverlay" onclick="closeSidebar()"></div>
+
+<!-- ===== APP ===== -->
+<div id="app">
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">🪟 Lucy</div>
+      <div class="logo-sub">루버 통합관리 시스템</div>
+    </div>
+    <div class="nav-menu" id="navMenu"></div>
+    <div class="sidebar-user">
+      <div class="uname" id="sidebarUserName"></div>
+      <div class="urole" id="sidebarUserRole"></div>
+      <button class="btn btn-sm btn-outline-secondary mt-2 w-100" onclick="logout()">로그아웃</button>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div id="googleConnectBanner" style="display:none">
+      <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size:1.2rem"></i>
+      <div>Google Sheets 연결이 필요합니다.</div>
+      <button class="btn btn-sm btn-warning ms-auto" onclick="initGoogleAuth()">Google 연결</button>
+    </div>
+
+    <!-- 대시보드 -->
+    <div id="page-dashboard" class="page-section">
+      <div class="page-header d-flex justify-content-between align-items-center">
+        <div class="page-title">대시보드</div>
+        <small class="text-muted" id="dashDate"></small>
+      </div>
+      <div class="row g-3 mb-4" id="dashStats"></div>
+      <div class="row g-3">
+        <div class="col-lg-6"><div class="widget" id="dashRecentWidget"></div></div>
+        <div class="col-lg-6"><div class="widget" id="dashUrgentWidget"></div></div>
+        <div class="col-12"><div class="widget"><div class="widget-title">월별 납품 수량</div><canvas id="dashChart" height="70"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- 현장 관리 -->
+    <div id="page-site" class="page-section">
+      <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="page-title">현장 관리</div>
+        <div class="d-flex gap-2">
+          <input type="search" id="siteSearch" class="form-control form-control-sm" placeholder="현장명/시공사 검색" style="width:200px" oninput="renderSiteList()">
+          <button class="btn btn-lucy btn-sm" id="siteAddBtn" onclick="openSiteModal()"><i class="bi bi-plus-lg"></i> 현장 추가</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-body p-0">
+        <div class="table-responsive"><table class="table table-hover mb-0">
+          <thead><tr>
+            <th>현장명</th><th>시공사</th><th>루버타입</th><th>계약수량</th>
+            <th>납품완료</th><th>잔여</th>
+            <th id="th-unitPrice" style="display:none">단가</th>
+            <th>준공일</th><th>진행률</th><th>관리</th>
+          </tr></thead>
+          <tbody id="siteTbody"></tbody>
+        </table></div>
+      </div></div>
+    </div>
+
+    <!-- 납품 관리 -->
+    <div id="page-delivery" class="page-section">
+      <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="page-title">납품 관리</div>
+        <div class="d-flex gap-2">
+          <input type="search" id="dlvSearch" class="form-control form-control-sm" placeholder="현장명 검색" style="width:200px" oninput="renderDeliveryList()">
+          <button class="btn btn-lucy btn-sm" id="dlvAddBtn" onclick="openDlvModal()"><i class="bi bi-plus-lg"></i> 납품 등록</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-body p-0">
+        <div class="table-responsive"><table class="table table-hover mb-0">
+          <thead><tr>
+            <th>납품일</th><th>현장명</th><th>규격</th><th>색상</th><th>수량</th>
+            <th id="dlv-th-cost">차량/화물비</th>
+            <th>비고</th><th>관리</th>
+          </tr></thead>
+          <tbody id="dlvTbody"></tbody>
+        </table></div>
+      </div></div>
+    </div>
+
+    <!-- 발주 관리 -->
+    <div id="page-order" class="page-section">
+      <div class="page-header"><div class="page-title">발주 관리</div></div>
+      <ul class="nav nav-tabs mb-3" id="orderTabs">
+        <li class="nav-item"><a class="nav-link active" href="#" onclick="switchOrderTab('dh',this);return false">대흥알루미늄</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="switchOrderTab('mg',this);return false">미광사</a></li>
+      </ul>
+      <div id="orderTab-dh">
+        <div class="d-flex justify-content-end mb-2">
+          <button class="btn btn-lucy btn-sm" id="dhAddBtn" onclick="openDHModal()"><i class="bi bi-plus-lg"></i> 발주 등록</button>
+        </div>
+        <div class="card"><div class="card-body p-0">
+          <div class="table-responsive"><table class="table table-hover mb-0">
+            <thead><tr><th>발주일</th><th>품목</th><th>색상코드</th><th>규격(m)</th><th>발주수량</th><th>명세서수신일</th><th id="dh-th-amount">발주금액</th><th>비고</th><th>관리</th></tr></thead>
+            <tbody id="dhTbody"></tbody>
+          </table></div>
+        </div></div>
+      </div>
+      <div id="orderTab-mg" style="display:none">
+        <div class="d-flex justify-content-end mb-2">
+          <button class="btn btn-lucy btn-sm" id="mgAddBtn" onclick="openMGModal()"><i class="bi bi-plus-lg"></i> 발주 등록</button>
+        </div>
+        <div class="card"><div class="card-body p-0">
+          <div class="table-responsive"><table class="table table-hover mb-0">
+            <thead><tr><th>발주일</th><th>품목</th><th>색상코드</th><th>규격(m)</th><th>발주수량</th><th>도장완료예정일</th><th>실제입고일</th><th>입고예정수량</th><th>실제입고수량</th><th>불량수량</th><th id="mg-th-amount">발주금액</th><th>관리</th></tr></thead>
+            <tbody id="mgTbody"></tbody>
+          </table></div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- 재고 관리 -->
+    <div id="page-inventory" class="page-section">
+      <div class="page-header d-flex justify-content-between align-items-center">
+        <div class="page-title">재고 관리</div>
+        <button class="btn btn-lucy btn-sm" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i> 새로고침</button>
+      </div>
+      <div class="row g-3 mb-3" id="inventoryGrid"></div>
+      <div class="card mt-2">
+        <div class="card-body">
+          <h6 class="fw-bold mb-3">재고 상세 내역 (품목별 색상/규격)</h6>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>품목</th><th>색상코드</th><th>규격(m)</th><th>입고 수량</th><th>사용 수량</th><th>재고</th></tr></thead>
+              <tbody id="invDetailTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 거래처 관리 -->
+    <div id="page-cust" class="page-section">
+      <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="page-title">거래처 관리</div>
+        <button class="btn btn-lucy btn-sm" id="custAddBtn" onclick="openCustModal()"><i class="bi bi-plus-lg"></i> 거래처 추가</button>
+      </div>
+      <div class="card"><div class="card-body p-0">
+        <div class="table-responsive"><table class="table table-hover mb-0">
+          <thead><tr><th>거래처명</th><th>담당자</th><th>연락처</th><th>이메일</th><th>주소</th><th>비고</th><th>관리</th></tr></thead>
+          <tbody id="custTbody"></tbody>
+        </table></div>
+      </div></div>
+    </div>
+
+    <!-- 통계/리포트 -->
+    <div id="page-stats" class="page-section">
+      <div class="page-header"><div class="page-title">통계 / 리포트</div></div>
+      <div class="row g-3 mb-4" id="statsCards"></div>
+      <div class="row g-3">
+        <div class="col-lg-6"><div class="card p-3"><div class="widget-title">월별 납품 수량</div><canvas id="chartMonthlyDelivery"></canvas></div></div>
+        <div class="col-lg-6"><div class="card p-3"><div class="widget-title">루버타입별 현장</div><canvas id="chartTypeBreakdown"></canvas></div></div>
+        <div class="col-lg-6" id="statsRevenueChart"><div class="card p-3"><div class="widget-title">월별 매출/납품비용</div><canvas id="chartRevenue"></canvas></div></div>
+        <div class="col-lg-6"><div class="card p-3"><div class="widget-title">현장별 진행률</div><div id="siteProgressList" style="max-height:320px;overflow-y:auto"></div></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- =================== MODALS =================== -->
+
+<!-- 현장 Modal -->
+<div class="modal fade" id="siteModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="siteModalTitle">현장 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">현장명 *</label><input class="form-control" id="s_name"></div>
+          <div class="col-md-6"><label class="form-label">시공사</label><input class="form-control" id="s_contractor"></div>
+          <div class="col-md-6"><label class="form-label">구매회사</label><input class="form-control" id="s_buyer"></div>
+          <div class="col-md-6"><label class="form-label">루버타입</label>
+            <select class="form-select" id="s_louverType">
+              <option value="">선택</option>
+              <option>외벽루버</option><option>발코니루버</option><option>차양루버</option>
+              <option>실내루버</option><option>스크린루버</option><option>기타</option>
+            </select>
+          </div>
+          <div class="col-md-4"><label class="form-label">계약 개수 *</label><input class="form-control" type="number" id="s_qty" min="0"></div>
+          <div class="col-md-4" id="s_priceWrap"><label class="form-label">단가 (원)</label><input class="form-control" type="number" id="s_unitPrice" min="0"></div>
+          <div class="col-md-4"><label class="form-label">규격 가로(mm)</label><input class="form-control" id="s_width"></div>
+          <div class="col-md-4"><label class="form-label">규격 세로(mm)</label><input class="form-control" id="s_height"></div>
+          <div class="col-12"><label class="form-label">색상코드 (쉼표로 구분)</label><input class="form-control" id="s_colors" placeholder="예) RAL7024, RAL9006"></div>
+          <div class="col-md-3">
+            <label class="form-label">포장</label>
+            <div class="d-flex gap-3 mt-1">
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_packing" id="sp_y" value="포함"><label class="form-check-label" for="sp_y">포함</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_packing" id="sp_n" value="미포함" checked><label class="form-check-label" for="sp_n">미포함</label></div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">시공</label>
+            <div class="d-flex gap-3 mt-1">
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_install" id="si_y" value="포함"><label class="form-check-label" for="si_y">포함</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_install" id="si_n" value="미포함" checked><label class="form-check-label" for="si_n">미포함</label></div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">방충망타입</label>
+            <div class="d-flex gap-3 mt-1">
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_screen" id="ss_y" value="있음"><label class="form-check-label" for="ss_y">있음</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_screen" id="ss_n" value="없음" checked><label class="form-check-label" for="ss_n">없음</label></div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">사춤코킹</label>
+            <div class="d-flex gap-3 mt-1">
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_caulk" id="sc_y" value="있음"><label class="form-check-label" for="sc_y">있음</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="s_caulk" id="sc_n" value="없음" checked><label class="form-check-label" for="sc_n">없음</label></div>
+            </div>
+          </div>
+          <div class="col-12"><label class="form-label">현장 주소</label><input class="form-control" id="s_addr"></div>
+          <div class="col-md-6"><label class="form-label">준공일</label><input class="form-control" type="date" id="s_compDate"></div>
+          <div class="col-md-6"><label class="form-label">결재일</label><input class="form-control" type="date" id="s_payDate"></div>
+          <div class="col-12"><hr class="my-1"><small class="text-primary fw-bold">공사 담당자</small></div>
+          <div class="col-md-4"><label class="form-label">이름</label><input class="form-control" id="s_cm_name"></div>
+          <div class="col-md-4"><label class="form-label">연락처</label><input class="form-control" id="s_cm_tel"></div>
+          <div class="col-md-4"><label class="form-label">이메일</label><input class="form-control" id="s_cm_email"></div>
+          <div class="col-12"><hr class="my-1"><small class="text-success fw-bold">기성 담당자</small></div>
+          <div class="col-md-4"><label class="form-label">이름</label><input class="form-control" id="s_ki_name"></div>
+          <div class="col-md-4"><label class="form-label">연락처</label><input class="form-control" id="s_ki_tel"></div>
+          <div class="col-md-4"><label class="form-label">이메일</label><input class="form-control" id="s_ki_email"></div>
+          <div class="col-md-6"><label class="form-label">기성 마감일</label><input class="form-control" type="date" id="s_ki_due"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-lucy" onclick="saveSite()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 현장 상세 Modal -->
+<div class="modal fade" id="siteDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">현장 상세 정보</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="siteDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 납품 Modal -->
+<div class="modal fade" id="dlvModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dlvModalTitle">납품 등록</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">현장 선택 *</label>
+            <select class="form-select" id="d_siteId" onchange="onDlvSiteChange()">
+              <option value="">현장을 선택하세요</option>
+            </select>
+          </div>
+          <div class="col-md-6"><label class="form-label">납품일 *</label><input class="form-control" type="date" id="d_date"></div>
+          <div class="col-md-6"><label class="form-label">규격</label><input class="form-control" id="d_spec" placeholder="예) 100×2000"></div>
+          <div class="col-md-6"><label class="form-label">색상</label><input class="form-control" id="d_color"></div>
+          <div class="col-md-4"><label class="form-label">납품 개수 *</label><input class="form-control" type="number" id="d_qty" min="1"></div>
+          <div class="col-md-4" id="d_carWrap">
+            <label class="form-label">차량 종류</label>
+            <select class="form-select" id="d_carType">
+              <option value="">선택</option>
+              <option>1톤</option><option>2.5톤</option><option>5톤</option><option>11톤</option><option>25톤</option><option>기타</option>
+            </select>
+          </div>
+          <div class="col-md-4" id="d_costWrap"><label class="form-label">화물비 (원)</label><input class="form-control" type="number" id="d_cost" min="0"></div>
+          <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="d_note" rows="2"></textarea></div>
+          <div class="col-12">
+            <label class="form-label fw-bold">재고 사용 내역</label>
+            <div id="d_invItems"></div>
+            <button class="btn btn-sm btn-outline-primary mt-2" type="button" onclick="addInvUsageRow()"><i class="bi bi-plus"></i> 항목 추가</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-lucy" onclick="saveDelivery()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 대흥알루미늄 발주 Modal -->
+<div class="modal fade" id="dhModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dhModalTitle">대흥알루미늄 발주 등록</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">발주일 *</label><input class="form-control" type="date" id="dh_date"></div>
+          <div class="col-md-6"><label class="form-label">품목 *</label><select class="form-select" id="dh_item"><option value="">선택</option></select></div>
+          <div class="col-md-6"><label class="form-label">색상코드</label><input class="form-control" id="dh_color" placeholder="예) RAL7024"></div>
+          <div class="col-md-6"><label class="form-label">규격(m)</label><input class="form-control" id="dh_spec" placeholder="예) 6000"></div>
+          <div class="col-md-6"><label class="form-label">발주 수량 *</label><input class="form-control" type="number" id="dh_qty" min="1"></div>
+          <div class="col-md-6"><label class="form-label">명세서 수신일</label><input class="form-control" type="date" id="dh_rcvDate"></div>
+          <div class="col-md-6" id="dh_amountWrap"><label class="form-label">발주 금액 (원)</label><input class="form-control" type="number" id="dh_amount" min="0"></div>
+          <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="dh_note" rows="2"></textarea></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-lucy" onclick="saveDH()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 미광사 발주 Modal -->
+<div class="modal fade" id="mgModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mgModalTitle">미광사 발주 등록</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">발주일 *</label><input class="form-control" type="date" id="mg_date"></div>
+          <div class="col-md-6"><label class="form-label">품목 *</label><select class="form-select" id="mg_item"><option value="">선택</option></select></div>
+          <div class="col-md-6"><label class="form-label">색상코드</label><input class="form-control" id="mg_color"></div>
+          <div class="col-md-6"><label class="form-label">규격(m)</label><input class="form-control" id="mg_spec"></div>
+          <div class="col-md-6"><label class="form-label">발주 수량 *</label><input class="form-control" type="number" id="mg_qty" min="1"></div>
+          <div class="col-md-6"><label class="form-label">도장완료 예정일</label><input class="form-control" type="date" id="mg_paintDate"></div>
+          <div class="col-md-6" id="mg_amountWrap"><label class="form-label">발주 금액 (원)</label><input class="form-control" type="number" id="mg_amount" min="0"></div>
+          <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="mg_note" rows="2"></textarea></div>
+          <!-- 입고 정보 -->
+          <div class="col-12" id="mg_rcvSection">
+            <hr><div class="fw-bold text-success mb-2">입고 정보</div>
+            <div class="row g-3">
+              <div class="col-md-6"><label class="form-label">실제 입고일</label><input class="form-control" type="date" id="mg_actualDate"></div>
+              <div class="col-md-6"><label class="form-label">입고 예정 수량</label><input class="form-control" type="number" id="mg_planQty" min="0"></div>
+              <div class="col-md-6"><label class="form-label">실제 입고 수량</label><input class="form-control" type="number" id="mg_actualQty" min="0"></div>
+              <div class="col-md-6"><label class="form-label">불량 수량</label><input class="form-control" type="number" id="mg_defectQty" min="0"></div>
+              <div class="col-12" id="mg_defectNoteWrap"><label class="form-label">불량 내용</label><textarea class="form-control" id="mg_defectNote" rows="2"></textarea></div>
+              <div class="col-md-6" id="mg_reportDateWrap"><label class="form-label">미광사 보고일</label><input class="form-control" type="date" id="mg_reportDate"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-lucy" onclick="saveMG()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 거래처 Modal -->
+<div class="modal fade" id="custModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="custModalTitle">거래처 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">거래처명 *</label><input class="form-control" id="c_name"></div>
+          <div class="col-md-6"><label class="form-label">담당자</label><input class="form-control" id="c_manager"></div>
+          <div class="col-md-6"><label class="form-label">연락처</label><input class="form-control" id="c_tel"></div>
+          <div class="col-md-6"><label class="form-label">이메일</label><input class="form-control" id="c_email"></div>
+          <div class="col-12"><label class="form-label">주소</label><input class="form-control" id="c_addr"></div>
+          <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="c_note" rows="2"></textarea></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-lucy" onclick="saveCust()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// =================== CONSTANTS ===================
+const CLIENT_ID = '173587119859-q6l1iiqlk9haln9qumepfu9iu8hfghhe.apps.googleusercontent.com';
+const SPREADSHEET_ID = '1_d1PVqteellSpbzveyXqzvuMTp3V4EOLc6Kdh8dZJAM';
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+const USERS = {
+  '강철':   { role:'대표자',   pw:'0000',
+    canPrice:true, canEditSite:true, canDeleteSite:true,
+    canEditDelivery:true, canDeleteDelivery:true,
+    canEditDeliveryCost:true, canViewDeliveryCost:true,
+    canOrder:true, canInputReceive:false, canViewDefect:true,
+    canCust:true, canStats:true },
+  '강명구': { role:'기성담당', pw:'0000',
+    canPrice:true, canEditSite:true, canDeleteSite:true,
+    canEditDelivery:true, canDeleteDelivery:true,
+    canEditDeliveryCost:false, canViewDeliveryCost:true,
+    canOrder:true, canInputReceive:false, canViewDefect:true,
+    canCust:true, canStats:true },
+  '문광훈': { role:'영업담당', pw:'0000',
+    canPrice:false, canEditSite:false, canDeleteSite:false,
+    canEditDelivery:false, canDeleteDelivery:false,
+    canEditDeliveryCost:false, canViewDeliveryCost:true,
+    canOrder:false, canInputReceive:false, canViewDefect:false,
+    canCust:true, canStats:true },
+  '최강현': { role:'공장장',   pw:'0000',
+    canPrice:false, canEditSite:false, canDeleteSite:false,
+    canEditDelivery:true, canDeleteDelivery:false,
+    canEditDeliveryCost:true, canViewDeliveryCost:true,
+    canOrder:false, canInputReceive:true, canViewDefect:false,
+    canCust:false, canStats:true }
+};
+
+const ITEMS = ['프레임','슬랫','고정슬랫(단)','고정슬랫(장)','중간바','연도형중간바','지지대','시트가이드바','덕트A','가이드바','로드바'];
+
+const SH = { SITE:'현장목록', DLV:'납품이력', DH:'발주_대흥', MG:'발주_미광사', CUST:'거래처' };
+
+const MENUS = [
+  { id:'dashboard', icon:'bi-speedometer2', label:'대시보드',    always:true },
+  { id:'site',      icon:'bi-building',     label:'현장 관리',   always:true },
+  { id:'delivery',  icon:'bi-truck',        label:'납품 관리',   always:true },
+  { id:'order',     icon:'bi-cart3',        label:'발주 관리',   perm:'canOrder' },
+  { id:'inventory', icon:'bi-boxes',        label:'재고 관리',   always:true },
+  { id:'cust',      icon:'bi-people',       label:'거래처 관리', perm:'canCust' },
+  { id:'stats',     icon:'bi-bar-chart-line',label:'통계/리포트',perm:'canStats' },
+];
+
+// =================== STATE ===================
+const S = {
+  user:null, perm:null, googleToken:null,
+  currentPage:'dashboard',
+  editingIds:{ site:null, dlv:null, dh:null, mg:null, cust:null },
+  data:{ sites:[], deliveries:[], ordersDH:[], ordersMG:[], customers:[] },
+  charts:{}
+};
+let selectedUser = null;
+let gisClient = null;
+
+// =================== LOGIN ===================
+function initLogin() {
+  const wrap = document.getElementById('userButtons');
+  const colors = ['#3b82f6','#10b981','#f59e0b','#8b5cf6'];
+  Object.keys(USERS).forEach((name, i) => {
+    const u = USERS[name];
+    const btn = document.createElement('button');
+    btn.className = 'user-btn';
+    btn.id = 'ubtn-' + name;
+    btn.innerHTML = `<span class="user-icon" style="background:${colors[i]}">${name[0]}</span>
+      <div><div style="font-weight:600">${name}</div><div style="font-size:.75rem;color:#64748b">${u.role}</div></div>`;
+    btn.onclick = () => selectUser(name);
+    wrap.appendChild(btn);
+  });
+}
+
+function selectUser(name) {
+  selectedUser = name;
+  document.querySelectorAll('.user-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('ubtn-' + name).classList.add('active');
+  document.getElementById('pwSection').style.display = 'block';
+  document.getElementById('pwError').style.display = 'none';
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwInput').focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('pwSection').style.display !== 'none') doLogin();
+});
+
+function doLogin() {
+  if (!selectedUser) return;
+  const pw = document.getElementById('pwInput').value;
+  if (pw === USERS[selectedUser].pw) {
+    S.user = selectedUser;
+    S.perm = USERS[selectedUser];
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    initApp();
+  } else {
+    document.getElementById('pwError').style.display = 'block';
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwInput').focus();
+  }
+}
+
+function logout() {
+  S.user = null; S.perm = null; S.googleToken = null;
+  selectedUser = null;
+  S.data = { sites:[], deliveries:[], ordersDH:[], ordersMG:[], customers:[] };
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('pwSection').style.display = 'none';
+  document.querySelectorAll('.user-btn').forEach(b => b.classList.remove('active'));
+  // destroy charts
+  Object.values(S.charts).forEach(c => { try { c.destroy(); } catch{} });
+  S.charts = {};
+}
+
+// =================== APP INIT ===================
+function initApp() {
+  document.getElementById('sidebarUserName').textContent = S.user;
+  document.getElementById('sidebarUserRole').textContent = S.perm.role;
+  document.getElementById('dashDate').textContent =
+    new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+  buildNav();
+  applyPermUI();
+  showPage('dashboard');
+  initGoogleAuth();
+}
+
+function buildNav() {
+  const nav = document.getElementById('navMenu');
+  nav.innerHTML = '';
+  MENUS.forEach(m => {
+    if (!m.always && m.perm && !S.perm[m.perm]) return;
+    const div = document.createElement('div');
+    div.className = 'nav-item';
+    div.id = 'nav-' + m.id;
+    div.innerHTML = `<i class="bi ${m.icon}"></i><span>${m.label}</span>`;
+    div.onclick = () => { showPage(m.id); closeSidebar(); };
+    nav.appendChild(div);
+  });
+}
+
+function applyPermUI() {
+  // unit price column
+  const thPrice = document.getElementById('th-unitPrice');
+  if (thPrice) thPrice.style.display = S.perm.canPrice ? '' : 'none';
+  // delivery cost column
+  const thCost = document.getElementById('dlv-th-cost');
+  if (thCost) thCost.style.display = S.perm.canViewDeliveryCost ? '' : 'none';
+  // buttons
+  el('siteAddBtn', S.perm.canEditSite);
+  el('dlvAddBtn', S.perm.canEditDelivery || S.perm.canEditSite);
+  el('dhAddBtn', S.perm.canOrder);
+  el('mgAddBtn', S.perm.canOrder);
+  el('custAddBtn', S.perm.canCust);
+  // price columns in orders
+  const thDA = document.getElementById('dh-th-amount');
+  const thMA = document.getElementById('mg-th-amount');
+  if (thDA) thDA.style.display = S.perm.canPrice ? '' : 'none';
+  if (thMA) thMA.style.display = S.perm.canPrice ? '' : 'none';
+}
+
+function el(id, show) {
+  const e = document.getElementById(id);
+  if (e) e.style.display = show ? '' : 'none';
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pg = document.getElementById('page-' + id);
+  if (!pg) return;
+  pg.classList.add('active');
+  const ni = document.getElementById('nav-' + id);
+  if (ni) ni.classList.add('active');
+  S.currentPage = id;
+  const renders = {
+    dashboard: renderDashboard,
+    site: renderSiteList,
+    delivery: renderDeliveryList,
+    order: renderOrderList,
+    inventory: renderInventory,
+    cust: renderCustomers,
+    stats: renderStats
+  };
+  if (renders[id]) renders[id]();
+}
+
+// =================== MOBILE ===================
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('mobileOverlay').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('mobileOverlay').classList.remove('show');
+}
+
+// =================== GOOGLE AUTH ===================
+function initGoogleAuth() {
+  const s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.onload = () => {
+    gisClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID, scope: SCOPES,
+      callback: resp => {
+        if (resp.access_token) {
+          S.googleToken = resp.access_token;
+          document.getElementById('googleConnectBanner').style.display = 'none';
+          toast('Google Sheets 연결 완료', 'success');
+          loadAll();
+        }
+      }
+    });
+    document.getElementById('googleConnectBanner').style.display = 'flex';
+    gisClient.requestAccessToken();
+  };
+  s.onerror = () => {
+    document.getElementById('googleConnectBanner').style.display = 'flex';
+  };
+  document.head.appendChild(s);
+}
+
+async function apiRequest(method, range, body) {
+  if (!S.googleToken) { document.getElementById('googleConnectBanner').style.display='flex'; return null; }
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}`;
+  const headers = { Authorization:`Bearer ${S.googleToken}`, 'Content-Type':'application/json' };
+  let url, opts = { method, headers };
+  if (method === 'GET') {
+    url = `${base}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`;
+  } else if (method === 'POST') {
+    url = `${base}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    opts.body = JSON.stringify({ values: body });
+  } else if (method === 'PUT') {
+    url = `${base}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+    opts.body = JSON.stringify({ values: body });
+  } else if (method === 'DELETE') {
+    url = `${base}/values/${encodeURIComponent(range)}:clear`;
+  }
+  try {
+    const res = await fetch(url, opts);
+    if (res.status === 401) { document.getElementById('googleConnectBanner').style.display='flex'; return null; }
+    return await res.json();
+  } catch(e) { toast('네트워크 오류: '+e.message,'error'); return null; }
+}
+
+async function loadAll() {
+  if (!S.googleToken) return;
+  await Promise.all([loadSites(), loadDeliveries(), loadOrdersDH(), loadOrdersMG(), loadCustomers()]);
+  if (document.getElementById('page-'+S.currentPage)?.classList.contains('active')) {
+    showPage(S.currentPage);
+  }
+}
+
+// =================== PARSERS ===================
+function safeJSON(v, def) { try { return v ? JSON.parse(v) : def; } catch { return def; } }
+
+function mkSite(r, i) {
+  return {
+    _row:i+2, id:String(r[0]||''), name:String(r[1]||''), contractor:String(r[2]||''),
+    buyer:String(r[3]||''), louverType:String(r[4]||''), qty:+r[5]||0,
+    ...(S.perm.canPrice ? { unitPrice:+r[6]||0 } : {}),
+    width:String(r[7]||''), height:String(r[8]||''),
+    colors:safeJSON(r[9],[]),
+    packing:String(r[10]||'미포함'), install:String(r[11]||'미포함'),
+    screen:String(r[12]||'없음'), caulk:String(r[13]||'없음'),
+    addr:String(r[14]||''), compDate:String(r[15]||''), payDate:String(r[16]||''),
+    cmName:String(r[17]||''), cmTel:String(r[18]||''), cmEmail:String(r[19]||''),
+    kiName:String(r[20]||''), kiTel:String(r[21]||''), kiEmail:String(r[22]||''), kiDue:String(r[23]||'')
+  };
+}
+
+function mkDelivery(r, i) {
+  return {
+    _row:i+2, id:String(r[0]||''), siteId:String(r[1]||''), siteName:String(r[2]||''),
+    date:String(r[3]||''), spec:String(r[4]||''), color:String(r[5]||''), qty:+r[6]||0,
+    ...(S.perm.canViewDeliveryCost ? { carType:String(r[7]||''), cost:+r[8]||0 } : {}),
+    note:String(r[9]||''), invUsage:String(r[10]||''), createdAt:String(r[11]||'')
+  };
+}
+
+function mkOrderDH(r, i) {
+  return {
+    _row:i+2, id:String(r[0]||''), date:String(r[1]||''), item:String(r[2]||''),
+    color:String(r[3]||''), spec:String(r[4]||''), qty:+r[5]||0, rcvDate:String(r[6]||''),
+    ...(S.perm.canPrice ? { amount:+r[7]||0 } : {}),
+    note:String(r[8]||'')
+  };
+}
+
+function mkOrderMG(r, i) {
+  const actualQty = +r[9]||0, defectQty = +r[10]||0;
+  return {
+    _row:i+2, id:String(r[0]||''), date:String(r[1]||''), item:String(r[2]||''),
+    color:String(r[3]||''), spec:String(r[4]||''), qty:+r[5]||0, paintDate:String(r[6]||''),
+    actualDate:String(r[7]||''), planQty:+r[8]||0, actualQty, defectQty,
+    ...(S.perm.canViewDefect ? { defectNote:String(r[11]||''), reportDate:String(r[12]||'') } : {}),
+    stockQty:+r[13]||0,
+    ...(S.perm.canPrice ? { amount:+r[14]||0 } : {}),
+    note:String(r[15]||'')
+  };
+}
+
+function mkCustomer(r, i) {
+  return {
+    _row:i+2, id:String(r[0]||''), name:String(r[1]||''), manager:String(r[2]||''),
+    tel:String(r[3]||''), email:String(r[4]||''), addr:String(r[5]||''), note:String(r[6]||'')
+  };
+}
+
+// =================== LOADERS ===================
+async function loadSites()     { const r=await apiRequest('GET',`${SH.SITE}!A2:X`); if(r) S.data.sites=(r.values||[]).filter(row=>row[0]).map(mkSite); }
+async function loadDeliveries(){ const r=await apiRequest('GET',`${SH.DLV}!A2:L`);  if(r) S.data.deliveries=(r.values||[]).filter(row=>row[0]).map(mkDelivery); }
+async function loadOrdersDH()  { const r=await apiRequest('GET',`${SH.DH}!A2:J`);   if(r) S.data.ordersDH=(r.values||[]).filter(row=>row[0]).map(mkOrderDH); }
+async function loadOrdersMG()  { const r=await apiRequest('GET',`${SH.MG}!A2:Q`);   if(r) S.data.ordersMG=(r.values||[]).filter(row=>row[0]).map(mkOrderMG); }
+async function loadCustomers() { const r=await apiRequest('GET',`${SH.CUST}!A2:G`); if(r) S.data.customers=(r.values||[]).filter(row=>row[0]).map(mkCustomer); }
+
+// =================== COMPUTED ===================
+function totalDelivered(siteId) {
+  return S.data.deliveries.filter(d=>d.siteId===siteId).reduce((s,d)=>s+d.qty,0);
+}
+function remaining(site) { return site.qty - totalDelivered(site.id); }
+
+function calcInventory() {
+  const inv = {};
+  S.data.ordersMG.forEach(o => {
+    if (o.actualQty > 0) {
+      const key = `${o.item}||${o.color}||${o.spec}`;
+      if (!inv[key]) inv[key] = { item:o.item, color:o.color, spec:o.spec, incoming:0, used:0 };
+      inv[key].incoming += o.stockQty || Math.max(0, o.actualQty - o.defectQty);
+    }
+  });
+  S.data.deliveries.forEach(d => {
+    safeJSON(d.invUsage,[]).forEach(u => {
+      const key = `${u.품목}||${u.색상}||${u.규격}`;
+      if (!inv[key]) inv[key] = { item:u.품목, color:u.색상||'', spec:u.규격||'', incoming:0, used:0 };
+      inv[key].used += +u.수량||0;
+    });
+  });
+  return Object.values(inv).map(v => ({ ...v, stock:v.incoming-v.used }));
+}
+
+// =================== DASHBOARD ===================
+function renderDashboard() {
+  const sites = S.data.sites, dlvs = S.data.deliveries;
+  const today = new Date().toISOString().slice(0,10);
+  const todayDlv = dlvs.filter(d=>d.date===today);
+  const inProg = sites.filter(s=>remaining(s)>0);
+  const done = sites.filter(s=>s.qty>0&&remaining(s)<=0);
+
+  document.getElementById('dashStats').innerHTML = [
+    {label:'전체 현장',   val:sites.length,    icon:'bi-building',    bg:'linear-gradient(135deg,#3b82f6,#2563eb)'},
+    {label:'진행중 현장', val:inProg.length,   icon:'bi-hammer',      bg:'linear-gradient(135deg,#f59e0b,#d97706)'},
+    {label:'완료 현장',   val:done.length,     icon:'bi-check-circle',bg:'linear-gradient(135deg,#10b981,#059669)'},
+    {label:'오늘 납품',   val:todayDlv.length+'건',icon:'bi-truck',   bg:'linear-gradient(135deg,#8b5cf6,#7c3aed)'},
+  ].map(c=>`<div class="col-6 col-lg-3">
+    <div class="stat-card" style="background:${c.bg}">
+      <div class="stat-num">${c.val}</div>
+      <div class="stat-label">${c.label}</div>
+      <i class="bi ${c.icon}"></i>
+    </div></div>`).join('');
+
+  const recent = [...dlvs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
+  document.getElementById('dashRecentWidget').innerHTML =
+    `<div class="widget-title">최근 납품 현황</div>` +
+    (recent.length===0 ? '<p class="text-muted text-center py-3">납품 이력 없음</p>' :
+    recent.map(d=>`<div class="todo-item">
+      <i class="bi bi-truck text-primary"></i>
+      <span class="text-muted" style="font-size:.8rem">${d.date}</span>
+      <span class="fw-bold">${d.siteName}</span>
+      <span class="ms-auto badge bg-light text-dark">${d.qty}개</span>
+    </div>`).join(''));
+
+  const soon = inProg.filter(s=>{
+    if(!s.compDate) return false;
+    const diff = (new Date(s.compDate)-new Date())/86400000;
+    return diff>=0&&diff<=30;
+  }).sort((a,b)=>a.compDate.localeCompare(b.compDate));
+
+  document.getElementById('dashUrgentWidget').innerHTML =
+    `<div class="widget-title">납품 임박 현장 (30일 이내)</div>` +
+    (soon.length===0 ? '<p class="text-muted text-center py-3">임박 현장 없음</p>' :
+    soon.map(s=>{
+      const diff = Math.ceil((new Date(s.compDate)-new Date())/86400000);
+      return `<div class="todo-item">
+        <i class="bi bi-calendar-event text-warning"></i>
+        <span class="fw-bold">${s.name}</span>
+        <span class="ms-auto badge ${diff<=7?'bg-danger':'bg-warning text-dark'}">${diff}일 남음</span>
+      </div>`;
+    }).join(''));
+
+  // chart
+  const ctx = document.getElementById('dashChart');
+  if (ctx && dlvs.length>0) {
+    const monthly = {};
+    dlvs.forEach(d=>{ if(d.date){ const ym=d.date.slice(0,7); monthly[ym]=(monthly[ym]||0)+d.qty; }});
+    const labels = Object.keys(monthly).sort().slice(-8);
+    const data = labels.map(l=>monthly[l]);
+    if (S.charts.dash) { S.charts.dash.destroy(); S.charts.dash=null; }
+    S.charts.dash = new Chart(ctx, {
+      type:'bar',
+      data:{labels, datasets:[{label:'납품 수량',data,backgroundColor:'rgba(37,99,235,.7)',borderRadius:6}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+    });
+  }
+}
+
+// =================== SITE ===================
+function renderSiteList() {
+  const q = (document.getElementById('siteSearch')?.value||'').toLowerCase();
+  document.getElementById('th-unitPrice').style.display = S.perm.canPrice?'':'none';
+  const list = S.data.sites.filter(s=>!q||s.name.toLowerCase().includes(q)||s.contractor.toLowerCase().includes(q));
+  const tbody = document.getElementById('siteTbody');
+  if (!list.length) { tbody.innerHTML='<tr><td colspan="10" class="text-center py-4 text-muted">현장이 없습니다</td></tr>'; return; }
+  tbody.innerHTML = list.map(s=>{
+    const dlvd=totalDelivered(s.id), rem=remaining(s);
+    const pct=s.qty>0?Math.min(100,Math.round(dlvd/s.qty*100)):0;
+    return `<tr style="cursor:pointer" onclick="openSiteDetail('${s.id}')">
+      <td><span class="fw-bold">${s.name}</span></td>
+      <td>${s.contractor||'-'}</td>
+      <td>${s.louverType||'-'}</td>
+      <td class="text-center">${s.qty}</td>
+      <td class="text-center">${dlvd}</td>
+      <td class="text-center ${rem>0?'text-danger fw-bold':''}">${rem}</td>
+      ${S.perm.canPrice?`<td class="text-end">${(s.unitPrice||0).toLocaleString()}원</td>`:''}
+      <td>${s.compDate||'-'}</td>
+      <td style="min-width:100px">
+        <div class="progress mb-1"><div class="progress-bar ${pct>=100?'bg-success':'bg-primary'}" style="width:${pct}%"></div></div>
+        <small class="text-muted">${pct}%</small>
+      </td>
+      <td onclick="event.stopPropagation()">
+        ${S.perm.canEditSite?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openSiteModal('${s.id}')"><i class="bi bi-pencil"></i></button>`:''}
+        ${S.perm.canDeleteSite?`<button class="btn btn-sm btn-outline-danger" onclick="deleteSite('${s.id}')"><i class="bi bi-trash"></i></button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openSiteDetail(id) {
+  const s = S.data.sites.find(x=>x.id===id); if(!s) return;
+  const dlvd=totalDelivered(id), rem=remaining(s);
+  const colors = Array.isArray(s.colors)?s.colors.join(', '):(s.colors||'-');
+  document.getElementById('siteDetailBody').innerHTML = `
+    <div class="row g-3">
+      <div class="col-6"><b>현장명</b><div class="mt-1">${s.name}</div></div>
+      <div class="col-6"><b>시공사</b><div class="mt-1">${s.contractor||'-'}</div></div>
+      <div class="col-6"><b>구매회사</b><div class="mt-1">${s.buyer||'-'}</div></div>
+      <div class="col-6"><b>루버타입</b><div class="mt-1">${s.louverType||'-'}</div></div>
+      <div class="col-4"><b>계약 개수</b><div class="mt-1">${s.qty}</div></div>
+      <div class="col-4"><b>납품 완료</b><div class="mt-1">${dlvd}</div></div>
+      <div class="col-4"><b>잔여</b><div class="mt-1 ${rem>0?'text-danger fw-bold':''}">${rem}</div></div>
+      ${S.perm.canPrice?`<div class="col-4"><b>단가</b><div class="mt-1">${(s.unitPrice||0).toLocaleString()}원</div></div>`:''}
+      <div class="col-4"><b>규격 가로</b><div class="mt-1">${s.width||'-'}mm</div></div>
+      <div class="col-4"><b>규격 세로</b><div class="mt-1">${s.height||'-'}mm</div></div>
+      <div class="col-6"><b>색상코드</b><div class="mt-1">${colors}</div></div>
+      <div class="col-3"><b>포장</b><div class="mt-1">${s.packing}</div></div>
+      <div class="col-3"><b>시공</b><div class="mt-1">${s.install}</div></div>
+      <div class="col-3"><b>방충망</b><div class="mt-1">${s.screen}</div></div>
+      <div class="col-3"><b>사춤코킹</b><div class="mt-1">${s.caulk}</div></div>
+      <div class="col-12"><b>현장 주소</b><div class="mt-1">${s.addr||'-'}</div></div>
+      <div class="col-4"><b>준공일</b><div class="mt-1">${s.compDate||'-'}</div></div>
+      <div class="col-4"><b>결재일</b><div class="mt-1">${s.payDate||'-'}</div></div>
+      <div class="col-12"><hr><div class="text-primary fw-bold mb-2">공사 담당자</div>
+        <div>${s.cmName||'-'} / ${s.cmTel||'-'} / ${s.cmEmail||'-'}</div></div>
+      <div class="col-12"><div class="text-success fw-bold mb-2">기성 담당자</div>
+        <div>${s.kiName||'-'} / ${s.kiTel||'-'} / ${s.kiEmail||'-'}</div>
+        ${s.kiDue?`<div class="mt-1 text-muted">기성 마감일: ${s.kiDue}</div>`:''}</div>
+    </div>`;
+  new bootstrap.Modal(document.getElementById('siteDetailModal')).show();
+}
+
+function openSiteModal(id) {
+  const isEdit=!!id;
+  document.getElementById('siteModalTitle').textContent = isEdit?'현장 수정':'현장 추가';
+  S.editingIds.site = id||null;
+  const clear = ids => ids.forEach(f=>{ const e=document.getElementById(f); if(e) e.value=''; });
+  clear(['s_name','s_contractor','s_buyer','s_width','s_height','s_colors','s_addr',
+    's_cm_name','s_cm_tel','s_cm_email','s_ki_name','s_ki_tel','s_ki_email',
+    's_qty','s_unitPrice','s_compDate','s_payDate','s_ki_due']);
+  document.getElementById('s_louverType').value='';
+  document.getElementById('s_priceWrap').style.display = S.perm.canPrice?'':'none';
+  // reset radios
+  [['s_packing','미포함'],['s_install','미포함'],['s_screen','없음'],['s_caulk','없음']].forEach(([n,v])=>{
+    const el=document.querySelector(`[name="${n}"][value="${v}"]`); if(el) el.checked=true;
+  });
+  if (isEdit) {
+    const s=S.data.sites.find(x=>x.id===id); if(!s) return;
+    document.getElementById('s_name').value=s.name;
+    document.getElementById('s_contractor').value=s.contractor;
+    document.getElementById('s_buyer').value=s.buyer;
+    document.getElementById('s_louverType').value=s.louverType;
+    document.getElementById('s_qty').value=s.qty;
+    if(S.perm.canPrice) document.getElementById('s_unitPrice').value=s.unitPrice||'';
+    document.getElementById('s_width').value=s.width;
+    document.getElementById('s_height').value=s.height;
+    document.getElementById('s_colors').value=Array.isArray(s.colors)?s.colors.join(', '):(s.colors||'');
+    [[s.packing,'s_packing'],[s.install,'s_install'],[s.screen,'s_screen'],[s.caulk,'s_caulk']].forEach(([val,name])=>{
+      const el=document.querySelector(`[name="${name}"][value="${val}"]`); if(el) el.checked=true;
+    });
+    document.getElementById('s_addr').value=s.addr;
+    document.getElementById('s_compDate').value=s.compDate;
+    document.getElementById('s_payDate').value=s.payDate;
+    document.getElementById('s_cm_name').value=s.cmName;
+    document.getElementById('s_cm_tel').value=s.cmTel;
+    document.getElementById('s_cm_email').value=s.cmEmail;
+    document.getElementById('s_ki_name').value=s.kiName;
+    document.getElementById('s_ki_tel').value=s.kiTel;
+    document.getElementById('s_ki_email').value=s.kiEmail;
+    document.getElementById('s_ki_due').value=s.kiDue;
+  }
+  new bootstrap.Modal(document.getElementById('siteModal')).show();
+}
+
+async function saveSite() {
+  const name=document.getElementById('s_name').value.trim();
+  const qty=+document.getElementById('s_qty').value||0;
+  if(!name){toast('현장명을 입력하세요','error');return;}
+  if(!qty){toast('계약 개수를 입력하세요','error');return;}
+  const colors=document.getElementById('s_colors').value.split(',').map(c=>c.trim()).filter(Boolean);
+  const getRad=name=>document.querySelector(`[name="${name}"]:checked`)?.value||'';
+  const row=[
+    S.editingIds.site||genId(), name,
+    document.getElementById('s_contractor').value.trim(),
+    document.getElementById('s_buyer').value.trim(),
+    document.getElementById('s_louverType').value, qty,
+    S.perm.canPrice?(+document.getElementById('s_unitPrice').value||0):'',
+    document.getElementById('s_width').value.trim(),
+    document.getElementById('s_height').value.trim(),
+    JSON.stringify(colors),
+    getRad('s_packing'),getRad('s_install'),getRad('s_screen'),getRad('s_caulk'),
+    document.getElementById('s_addr').value.trim(),
+    document.getElementById('s_compDate').value,
+    document.getElementById('s_payDate').value,
+    document.getElementById('s_cm_name').value.trim(),
+    document.getElementById('s_cm_tel').value.trim(),
+    document.getElementById('s_cm_email').value.trim(),
+    document.getElementById('s_ki_name').value.trim(),
+    document.getElementById('s_ki_tel').value.trim(),
+    document.getElementById('s_ki_email').value.trim(),
+    document.getElementById('s_ki_due').value
+  ];
+  if(S.editingIds.site){
+    const s=S.data.sites.find(x=>x.id===S.editingIds.site);
+    if(s) await apiRequest('PUT',`${SH.SITE}!A${s._row}:X${s._row}`,[row]);
+  } else {
+    await apiRequest('POST',`${SH.SITE}!A:X`,[row]);
+  }
+  bootstrap.Modal.getInstance(document.getElementById('siteModal'))?.hide();
+  toast(isEdit(S.editingIds.site)?'현장이 수정되었습니다':'현장이 추가되었습니다','success');
+  await loadSites(); renderSiteList();
+}
+
+async function deleteSite(id) {
+  if(!confirm('이 현장을 삭제하시겠습니까?')) return;
+  const s=S.data.sites.find(x=>x.id===id); if(!s) return;
+  await apiRequest('PUT',`${SH.SITE}!A${s._row}:X${s._row}`,[Array(24).fill('')]);
+  toast('현장이 삭제되었습니다','success');
+  await loadSites(); renderSiteList();
+}
+
+// =================== DELIVERY ===================
+function renderDeliveryList() {
+  const q=(document.getElementById('dlvSearch')?.value||'').toLowerCase();
+  document.getElementById('dlv-th-cost').style.display=S.perm.canViewDeliveryCost?'':'none';
+  const list=[...S.data.deliveries].filter(d=>!q||(d.siteName||'').toLowerCase().includes(q))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const tbody=document.getElementById('dlvTbody');
+  if(!list.length){tbody.innerHTML='<tr><td colspan="8" class="text-center py-4 text-muted">납품 이력 없음</td></tr>';return;}
+  tbody.innerHTML=list.map(d=>`<tr>
+    <td>${d.date}</td>
+    <td class="fw-bold">${d.siteName}</td>
+    <td>${d.spec||'-'}</td>
+    <td>${d.color||'-'}</td>
+    <td class="text-center">${d.qty}</td>
+    ${S.perm.canViewDeliveryCost?`<td>${d.carType||'-'} / ${(d.cost||0).toLocaleString()}원</td>`:''}
+    <td>${d.note||'-'}</td>
+    <td>
+      ${(S.perm.canEditDelivery||S.perm.canEditSite)?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDlvModal('${d.id}')"><i class="bi bi-pencil"></i></button>`:''}
+      ${S.perm.canDeleteDelivery?`<button class="btn btn-sm btn-outline-danger" onclick="deleteDlv('${d.id}')"><i class="bi bi-trash"></i></button>`:''}
+    </td>
+  </tr>`).join('');
+}
+
+function openDlvModal(id) {
+  const isEdit=!!id;
+  document.getElementById('dlvModalTitle').textContent=isEdit?'납품 수정':'납품 등록';
+  S.editingIds.dlv=id||null;
+  const sel=document.getElementById('d_siteId');
+  sel.innerHTML='<option value="">현장을 선택하세요</option>';
+  S.data.sites.forEach(s=>{ sel.innerHTML+=`<option value="${s.id}">${s.name}</option>`; });
+  ['d_spec','d_color','d_note'].forEach(f=>document.getElementById(f).value='');
+  ['d_qty','d_cost'].forEach(f=>document.getElementById(f).value='');
+  document.getElementById('d_date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('d_carType').value='';
+  document.getElementById('d_invItems').innerHTML='';
+  const canCost=S.perm.canEditDeliveryCost;
+  document.getElementById('d_carWrap').style.display=canCost?'':'none';
+  document.getElementById('d_costWrap').style.display=canCost?'':'none';
+  if(isEdit){
+    const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
+    document.getElementById('d_siteId').value=d.siteId;
+    document.getElementById('d_date').value=d.date;
+    document.getElementById('d_spec').value=d.spec;
+    document.getElementById('d_color').value=d.color;
+    document.getElementById('d_qty').value=d.qty;
+    if(canCost){document.getElementById('d_carType').value=d.carType||'';document.getElementById('d_cost').value=d.cost||'';}
+    document.getElementById('d_note').value=d.note;
+    safeJSON(d.invUsage,[]).forEach(u=>addInvUsageRow(u));
+  }
+  new bootstrap.Modal(document.getElementById('dlvModal')).show();
+}
+
+function addInvUsageRow(data) {
+  const div=document.createElement('div');
+  div.className='d-flex gap-2 mb-2 align-items-center inv-usage-row';
+  div.innerHTML=`
+    <select class="form-select form-select-sm" style="flex:2">
+      <option value="">품목</option>${ITEMS.map(i=>`<option ${data&&data.품목===i?'selected':''}>${i}</option>`).join('')}
+    </select>
+    <input class="form-control form-control-sm" style="flex:1" placeholder="색상" value="${data?data.색상||'':''}">
+    <input class="form-control form-control-sm" style="flex:1" placeholder="규격" value="${data?data.규격||'':''}">
+    <input class="form-control form-control-sm" style="flex:1;max-width:80px" placeholder="수량" type="number" min="0" value="${data?data.수량||'':''}">
+    <button class="btn btn-sm btn-outline-danger" type="button" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>`;
+  document.getElementById('d_invItems').appendChild(div);
+}
+
+function onDlvSiteChange() {
+  const sid=document.getElementById('d_siteId').value;
+  const site=S.data.sites.find(s=>s.id===sid);
+  if(site&&Array.isArray(site.colors)&&site.colors.length>0)
+    document.getElementById('d_color').value=site.colors[0];
+}
+
+async function saveDelivery() {
+  const siteId=document.getElementById('d_siteId').value;
+  const date=document.getElementById('d_date').value;
+  const qty=+document.getElementById('d_qty').value||0;
+  const site=S.data.sites.find(s=>s.id===siteId);
+  if(!site){toast('현장을 선택하세요','error');return;}
+  if(!date){toast('납품일을 입력하세요','error');return;}
+  if(!qty){toast('납품 개수를 입력하세요','error');return;}
+  const invRows=[];
+  document.querySelectorAll('.inv-usage-row').forEach(div=>{
+    const els=div.querySelectorAll('select,input[type="text"],input:not([type="number"]),input[type="number"]');
+    const 품목=els[0].value, 색상=els[1].value.trim(), 규격=els[2].value.trim(), 수량=+els[3].value||0;
+    if(품목&&수량>0) invRows.push({품목,색상,규격,수량});
+  });
+  const canCost=S.perm.canEditDeliveryCost;
+  const row=[
+    S.editingIds.dlv||genId(), siteId, site.name, date,
+    document.getElementById('d_spec').value.trim(),
+    document.getElementById('d_color').value.trim(),
+    qty,
+    canCost?document.getElementById('d_carType').value:'',
+    canCost?(+document.getElementById('d_cost').value||0):0,
+    document.getElementById('d_note').value.trim(),
+    invRows.length>0?JSON.stringify(invRows):'',
+    new Date().toISOString().slice(0,10)
+  ];
+  if(S.editingIds.dlv){
+    const d=S.data.deliveries.find(x=>x.id===S.editingIds.dlv);
+    if(d) await apiRequest('PUT',`${SH.DLV}!A${d._row}:L${d._row}`,[row]);
+  } else {
+    await apiRequest('POST',`${SH.DLV}!A:L`,[row]);
+  }
+  bootstrap.Modal.getInstance(document.getElementById('dlvModal'))?.hide();
+  toast(S.editingIds.dlv?'납품이 수정되었습니다':'납품이 등록되었습니다','success');
+  await loadDeliveries(); renderDeliveryList();
+}
+
+async function deleteDlv(id) {
+  if(!confirm('납품 이력을 삭제하시겠습니까?')) return;
+  const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
+  await apiRequest('PUT',`${SH.DLV}!A${d._row}:L${d._row}`,[Array(12).fill('')]);
+  toast('납품 이력이 삭제되었습니다','success');
+  await loadDeliveries(); renderDeliveryList();
+}
+
+// =================== ORDER ===================
+function switchOrderTab(tab, el) {
+  S.currentOrderTab=tab;
+  document.querySelectorAll('#orderTabs .nav-link').forEach(a=>a.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('orderTab-dh').style.display=tab==='dh'?'':'none';
+  document.getElementById('orderTab-mg').style.display=tab==='mg'?'':'none';
+}
+
+function renderOrderList() { renderDHList(); renderMGList(); }
+
+function renderDHList() {
+  const list=[...S.data.ordersDH].sort((a,b)=>b.date.localeCompare(a.date));
+  const tbody=document.getElementById('dhTbody');
+  if(!list.length){tbody.innerHTML='<tr><td colspan="9" class="text-center py-4 text-muted">발주 내역 없음</td></tr>';return;}
+  tbody.innerHTML=list.map(o=>`<tr>
+    <td>${o.date}</td><td>${o.item}</td><td>${o.color||'-'}</td><td>${o.spec||'-'}</td>
+    <td class="text-center">${o.qty}</td>
+    <td>${o.rcvDate||'-'}</td>
+    <td class="text-end">${S.perm.canPrice?(o.amount||0).toLocaleString()+'원':'-'}</td>
+    <td>${o.note||'-'}</td>
+    <td>${S.perm.canOrder?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDHModal('${o.id}')"><i class="bi bi-pencil"></i></button>
+      <button class="btn btn-sm btn-outline-danger" onclick="deleteDH('${o.id}')"><i class="bi bi-trash"></i></button>`:''}</td>
+  </tr>`).join('');
+}
+
+function renderMGList() {
+  const list=[...S.data.ordersMG].sort((a,b)=>b.date.localeCompare(a.date));
+  const tbody=document.getElementById('mgTbody');
+  if(!list.length){tbody.innerHTML='<tr><td colspan="12" class="text-center py-4 text-muted">발주 내역 없음</td></tr>';return;}
+  tbody.innerHTML=list.map(o=>`<tr>
+    <td>${o.date}</td><td>${o.item}</td><td>${o.color||'-'}</td><td>${o.spec||'-'}</td>
+    <td class="text-center">${o.qty}</td>
+    <td>${o.paintDate||'-'}</td>
+    <td>${o.actualDate||'-'}</td>
+    <td class="text-center">${o.planQty||'-'}</td>
+    <td class="text-center">${o.actualQty||0}</td>
+    <td class="text-center ${o.defectQty>0?'text-danger fw-bold':''}">${o.defectQty||0}</td>
+    <td class="text-end">${S.perm.canPrice?(o.amount||0).toLocaleString()+'원':'-'}</td>
+    <td>
+      ${S.perm.canOrder||S.perm.canInputReceive?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openMGModal('${o.id}')"><i class="bi bi-pencil"></i></button>`:''}
+      ${S.perm.canOrder?`<button class="btn btn-sm btn-outline-danger" onclick="deleteMG('${o.id}')"><i class="bi bi-trash"></i></button>`:''}
+    </td>
+  </tr>`).join('');
+}
+
+function populateItems(selId) {
+  const s=document.getElementById(selId);
+  s.innerHTML='<option value="">선택</option>'+ITEMS.map(i=>`<option>${i}</option>`).join('');
+}
+
+function openDHModal(id) {
+  populateItems('dh_item');
+  const isEdit=!!id;
+  document.getElementById('dhModalTitle').textContent=isEdit?'대흥알루미늄 발주 수정':'대흥알루미늄 발주 등록';
+  S.editingIds.dh=id||null;
+  ['dh_color','dh_spec','dh_note'].forEach(f=>document.getElementById(f).value='');
+  ['dh_qty','dh_amount'].forEach(f=>document.getElementById(f).value='');
+  document.getElementById('dh_date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('dh_rcvDate').value='';
+  document.getElementById('dh_item').value='';
+  document.getElementById('dh_amountWrap').style.display=S.perm.canPrice?'':'none';
+  if(isEdit){
+    const o=S.data.ordersDH.find(x=>x.id===id); if(!o) return;
+    document.getElementById('dh_date').value=o.date;
+    document.getElementById('dh_item').value=o.item;
+    document.getElementById('dh_color').value=o.color;
+    document.getElementById('dh_spec').value=o.spec;
+    document.getElementById('dh_qty').value=o.qty;
+    document.getElementById('dh_rcvDate').value=o.rcvDate;
+    if(S.perm.canPrice) document.getElementById('dh_amount').value=o.amount||'';
+    document.getElementById('dh_note').value=o.note;
+  }
+  new bootstrap.Modal(document.getElementById('dhModal')).show();
+}
+
+async function saveDH() {
+  const date=document.getElementById('dh_date').value;
+  const item=document.getElementById('dh_item').value;
+  const qty=+document.getElementById('dh_qty').value||0;
+  if(!date||!item||!qty){toast('필수 항목을 입력하세요','error');return;}
+  const row=[
+    S.editingIds.dh||genId(),date,item,
+    document.getElementById('dh_color').value.trim(),
+    document.getElementById('dh_spec').value.trim(),
+    qty, document.getElementById('dh_rcvDate').value,
+    S.perm.canPrice?(+document.getElementById('dh_amount').value||0):0,
+    document.getElementById('dh_note').value.trim(),
+    new Date().toISOString().slice(0,10)
+  ];
+  if(S.editingIds.dh){
+    const o=S.data.ordersDH.find(x=>x.id===S.editingIds.dh);
+    if(o) await apiRequest('PUT',`${SH.DH}!A${o._row}:J${o._row}`,[row]);
+  } else { await apiRequest('POST',`${SH.DH}!A:J`,[row]); }
+  bootstrap.Modal.getInstance(document.getElementById('dhModal'))?.hide();
+  toast('저장되었습니다','success');
+  await loadOrdersDH(); renderDHList();
+}
+
+async function deleteDH(id) {
+  if(!confirm('발주 내역을 삭제하시겠습니까?')) return;
+  const o=S.data.ordersDH.find(x=>x.id===id); if(!o) return;
+  await apiRequest('PUT',`${SH.DH}!A${o._row}:J${o._row}`,[Array(10).fill('')]);
+  toast('삭제되었습니다','success');
+  await loadOrdersDH(); renderDHList();
+}
+
+function openMGModal(id) {
+  populateItems('mg_item');
+  const isEdit=!!id;
+  document.getElementById('mgModalTitle').textContent=isEdit?'미광사 발주 수정':'미광사 발주 등록';
+  S.editingIds.mg=id||null;
+  ['mg_color','mg_spec','mg_note','mg_defectNote'].forEach(f=>document.getElementById(f).value='');
+  ['mg_qty','mg_amount','mg_planQty','mg_actualQty','mg_defectQty'].forEach(f=>document.getElementById(f).value='');
+  document.getElementById('mg_date').value=new Date().toISOString().slice(0,10);
+  ['mg_paintDate','mg_actualDate','mg_reportDate'].forEach(f=>document.getElementById(f).value='');
+  document.getElementById('mg_item').value='';
+  document.getElementById('mg_amountWrap').style.display=S.perm.canPrice?'':'none';
+  // Receive section
+  const canRcv=S.perm.canInputReceive||S.perm.canViewDefect;
+  document.getElementById('mg_rcvSection').style.display=canRcv?'':'none';
+  const readOnly=!S.perm.canInputReceive;
+  ['mg_actualDate','mg_planQty','mg_actualQty','mg_defectQty'].forEach(f=>{
+    const e=document.getElementById(f); if(e) e.disabled=readOnly;
+  });
+  document.getElementById('mg_defectNoteWrap').style.display=S.perm.canViewDefect?'':'none';
+  document.getElementById('mg_reportDateWrap').style.display=S.perm.canViewDefect?'':'none';
+  if(document.getElementById('mg_defectNote')) document.getElementById('mg_defectNote').disabled=!S.perm.canInputReceive;
+  if(document.getElementById('mg_reportDate')) document.getElementById('mg_reportDate').disabled=!S.perm.canInputReceive;
+  if(isEdit){
+    const o=S.data.ordersMG.find(x=>x.id===id); if(!o) return;
+    document.getElementById('mg_date').value=o.date;
+    document.getElementById('mg_item').value=o.item;
+    document.getElementById('mg_color').value=o.color;
+    document.getElementById('mg_spec').value=o.spec;
+    document.getElementById('mg_qty').value=o.qty;
+    document.getElementById('mg_paintDate').value=o.paintDate;
+    if(S.perm.canPrice) document.getElementById('mg_amount').value=o.amount||'';
+    document.getElementById('mg_note').value=o.note;
+    if(canRcv){
+      document.getElementById('mg_actualDate').value=o.actualDate||'';
+      document.getElementById('mg_planQty').value=o.planQty||'';
+      document.getElementById('mg_actualQty').value=o.actualQty||'';
+      document.getElementById('mg_defectQty').value=o.defectQty||'';
+    }
+    if(S.perm.canViewDefect){
+      document.getElementById('mg_defectNote').value=o.defectNote||'';
+      document.getElementById('mg_reportDate').value=o.reportDate||'';
+    }
+  }
+  new bootstrap.Modal(document.getElementById('mgModal')).show();
+}
+
+async function saveMG() {
+  const date=document.getElementById('mg_date').value;
+  const item=document.getElementById('mg_item').value;
+  const qty=+document.getElementById('mg_qty').value||0;
+  if(!date||!item||!qty){toast('필수 항목을 입력하세요','error');return;}
+  const actualQty=+document.getElementById('mg_actualQty').value||0;
+  const defectQty=+document.getElementById('mg_defectQty').value||0;
+  const stockQty=Math.max(0,actualQty-defectQty);
+  const row=[
+    S.editingIds.mg||genId(),date,item,
+    document.getElementById('mg_color').value.trim(),
+    document.getElementById('mg_spec').value.trim(),
+    qty, document.getElementById('mg_paintDate').value,
+    document.getElementById('mg_actualDate').value,
+    +document.getElementById('mg_planQty').value||0,
+    actualQty, defectQty,
+    document.getElementById('mg_defectNote').value.trim(),
+    document.getElementById('mg_reportDate').value,
+    stockQty,
+    S.perm.canPrice?(+document.getElementById('mg_amount').value||0):0,
+    document.getElementById('mg_note').value.trim(),
+    new Date().toISOString().slice(0,10)
+  ];
+  if(S.editingIds.mg){
+    const o=S.data.ordersMG.find(x=>x.id===S.editingIds.mg);
+    if(o) await apiRequest('PUT',`${SH.MG}!A${o._row}:Q${o._row}`,[row]);
+  } else { await apiRequest('POST',`${SH.MG}!A:Q`,[row]); }
+  bootstrap.Modal.getInstance(document.getElementById('mgModal'))?.hide();
+  toast('저장되었습니다','success');
+  await loadOrdersMG(); renderMGList();
+}
+
+async function deleteMG(id) {
+  if(!confirm('발주 내역을 삭제하시겠습니까?')) return;
+  const o=S.data.ordersMG.find(x=>x.id===id); if(!o) return;
+  await apiRequest('PUT',`${SH.MG}!A${o._row}:Q${o._row}`,[Array(17).fill('')]);
+  toast('삭제되었습니다','success');
+  await loadOrdersMG(); renderMGList();
+}
+
+// =================== INVENTORY ===================
+function renderInventory() {
+  const items=calcInventory();
+  // summary by item name
+  const byItem={};
+  ITEMS.forEach(i=>{ byItem[i]={total:0,incoming:0,used:0,details:[]}; });
+  items.forEach(v=>{
+    if(!byItem[v.item]) byItem[v.item]={total:0,incoming:0,used:0,details:[]};
+    byItem[v.item].total+=v.stock;
+    byItem[v.item].incoming+=v.incoming;
+    byItem[v.item].used+=v.used;
+    byItem[v.item].details.push(v);
+  });
+  document.getElementById('inventoryGrid').innerHTML=Object.entries(byItem).map(([name,d])=>`
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="inv-item">
+        <div class="item-name">${name}</div>
+        <div class="d-flex align-items-end gap-1">
+          <div class="inv-qty ${d.total<0?'low':d.total===0?'text-muted':''}">${d.total}</div>
+          <small class="text-muted mb-1">개</small>
+        </div>
+        <small class="text-muted">입고 ${d.incoming} / 사용 ${d.used}</small>
+      </div>
+    </div>`).join('');
+
+  // detail table
+  const detailTbody=document.getElementById('invDetailTbody');
+  if(!items.length){ detailTbody.innerHTML='<tr><td colspan="6" class="text-center py-3 text-muted">재고 내역 없음</td></tr>'; return; }
+  detailTbody.innerHTML=items.sort((a,b)=>a.item.localeCompare(b.item)).map(v=>`<tr>
+    <td>${v.item}</td><td>${v.color||'-'}</td><td>${v.spec||'-'}</td>
+    <td class="text-center">${v.incoming}</td><td class="text-center">${v.used}</td>
+    <td class="text-center fw-bold ${v.stock<0?'text-danger':v.stock===0?'text-muted':'text-primary'}">${v.stock}</td>
+  </tr>`).join('');
+}
+
+// =================== CUSTOMERS ===================
+function renderCustomers() {
+  const tbody=document.getElementById('custTbody');
+  const list=S.data.customers;
+  if(!list.length){tbody.innerHTML='<tr><td colspan="7" class="text-center py-4 text-muted">거래처가 없습니다</td></tr>';return;}
+  tbody.innerHTML=list.map(c=>`<tr>
+    <td class="fw-bold">${c.name}</td>
+    <td>${c.manager||'-'}</td>
+    <td>${c.tel||'-'}</td>
+    <td>${c.email||'-'}</td>
+    <td>${c.addr||'-'}</td>
+    <td>${c.note||'-'}</td>
+    <td>
+      ${S.perm.canCust?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openCustModal('${c.id}')"><i class="bi bi-pencil"></i></button>
+      <button class="btn btn-sm btn-outline-danger" onclick="deleteCust('${c.id}')"><i class="bi bi-trash"></i></button>`:''}
+    </td>
+  </tr>`).join('');
+}
+
+function openCustModal(id) {
+  const isEdit=!!id;
+  document.getElementById('custModalTitle').textContent=isEdit?'거래처 수정':'거래처 추가';
+  S.editingIds.cust=id||null;
+  ['c_name','c_manager','c_tel','c_email','c_addr','c_note'].forEach(f=>document.getElementById(f).value='');
+  if(isEdit){
+    const c=S.data.customers.find(x=>x.id===id); if(!c) return;
+    document.getElementById('c_name').value=c.name;
+    document.getElementById('c_manager').value=c.manager;
+    document.getElementById('c_tel').value=c.tel;
+    document.getElementById('c_email').value=c.email;
+    document.getElementById('c_addr').value=c.addr;
+    document.getElementById('c_note').value=c.note;
+  }
+  new bootstrap.Modal(document.getElementById('custModal')).show();
+}
+
+async function saveCust() {
+  const name=document.getElementById('c_name').value.trim();
+  if(!name){toast('거래처명을 입력하세요','error');return;}
+  const row=[
+    S.editingIds.cust||genId(),name,
+    document.getElementById('c_manager').value.trim(),
+    document.getElementById('c_tel').value.trim(),
+    document.getElementById('c_email').value.trim(),
+    document.getElementById('c_addr').value.trim(),
+    document.getElementById('c_note').value.trim()
+  ];
+  if(S.editingIds.cust){
+    const c=S.data.customers.find(x=>x.id===S.editingIds.cust);
+    if(c) await apiRequest('PUT',`${SH.CUST}!A${c._row}:G${c._row}`,[row]);
+  } else { await apiRequest('POST',`${SH.CUST}!A:G`,[row]); }
+  bootstrap.Modal.getInstance(document.getElementById('custModal'))?.hide();
+  toast('거래처가 저장되었습니다','success');
+  await loadCustomers(); renderCustomers();
+}
+
+async function deleteCust(id) {
+  if(!confirm('거래처를 삭제하시겠습니까?')) return;
+  const c=S.data.customers.find(x=>x.id===id); if(!c) return;
+  await apiRequest('PUT',`${SH.CUST}!A${c._row}:G${c._row}`,[Array(7).fill('')]);
+  toast('삭제되었습니다','success');
+  await loadCustomers(); renderCustomers();
+}
+
+// =================== STATS ===================
+function renderStats() {
+  const sites=S.data.sites, dlvs=S.data.deliveries;
+  const totalDlvd=dlvs.reduce((s,d)=>s+d.qty,0);
+  const totalCostAll=dlvs.reduce((s,d)=>s+(d.cost||0),0);
+  const totalRev=S.perm.canPrice?sites.reduce((s,site)=>{
+    const dlvd=totalDelivered(site.id);
+    return s+dlvd*(site.unitPrice||0);
+  },0):null;
+  const totalDHCost=S.perm.canPrice?S.data.ordersDH.reduce((s,o)=>s+(o.amount||0),0):null;
+  const totalMGCost=S.perm.canPrice?S.data.ordersMG.reduce((s,o)=>s+(o.amount||0),0):null;
+
+  const cards=[
+    {label:'전체 납품 수량',val:totalDlvd+'개',color:'#3b82f6'},
+    {label:'전체 현장 수',val:sites.length+'개',color:'#10b981'},
+    ...(S.perm.canPrice?[
+      {label:'예상 매출 합계',val:totalRev.toLocaleString()+'원',color:'#f59e0b'},
+      {label:'납품 비용 합계',val:totalCostAll.toLocaleString()+'원',color:'#ef4444'},
+      {label:'대흥알루미늄 발주금액',val:totalDHCost.toLocaleString()+'원',color:'#8b5cf6'},
+      {label:'미광사 발주금액',val:totalMGCost.toLocaleString()+'원',color:'#06b6d4'},
+    ]:[])
+  ];
+  document.getElementById('statsCards').innerHTML=cards.map(c=>`
+    <div class="col-6 col-lg-3">
+      <div class="card p-3 text-center">
+        <div style="font-size:1.5rem;font-weight:800;color:${c.color}">${c.val}</div>
+        <div style="font-size:.8rem;color:#64748b;margin-top:4px">${c.label}</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('statsRevenueChart').style.display=S.perm.canPrice?'':'none';
+  // destroy old charts
+  ['monthly','type','rev'].forEach(k=>{ if(S.charts[k]){S.charts[k].destroy();S.charts[k]=null;} });
+
+  // Monthly delivery chart
+  const ctx1=document.getElementById('chartMonthlyDelivery');
+  if(ctx1){
+    const monthly={};
+    dlvs.forEach(d=>{if(d.date){const ym=d.date.slice(0,7);monthly[ym]=(monthly[ym]||0)+d.qty;}});
+    const labels=Object.keys(monthly).sort().slice(-12);
+    S.charts.monthly=new Chart(ctx1,{
+      type:'bar',
+      data:{labels,datasets:[{label:'납품 수량',data:labels.map(l=>monthly[l]),backgroundColor:'rgba(37,99,235,.7)',borderRadius:6}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+    });
+  }
+  // Type pie
+  const ctx2=document.getElementById('chartTypeBreakdown');
+  if(ctx2){
+    const byType={};
+    sites.forEach(s=>{const t=s.louverType||'기타';byType[t]=(byType[t]||0)+1;});
+    const labels=Object.keys(byType);
+    S.charts.type=new Chart(ctx2,{
+      type:'doughnut',
+      data:{labels,datasets:[{data:labels.map(l=>byType[l]),backgroundColor:['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4']}]},
+      options:{plugins:{legend:{position:'right'}}}
+    });
+  }
+  // Revenue chart
+  if(S.perm.canPrice){
+    const ctx3=document.getElementById('chartRevenue');
+    if(ctx3){
+      const mData={};
+      dlvs.forEach(d=>{
+        if(!d.date) return;
+        const ym=d.date.slice(0,7);
+        if(!mData[ym]) mData[ym]={cost:0,rev:0};
+        mData[ym].cost+=(d.cost||0);
+        const site=sites.find(s=>s.siteId===d.siteId||s.id===d.siteId);
+        if(site) mData[ym].rev+=d.qty*(site.unitPrice||0);
+      });
+      const labels=Object.keys(mData).sort().slice(-12);
+      S.charts.rev=new Chart(ctx3,{
+        type:'line',
+        data:{labels,datasets:[
+          {label:'예상 매출',data:labels.map(l=>mData[l]?.rev||0),borderColor:'#3b82f6',fill:false,tension:.3,pointRadius:4},
+          {label:'납품 비용',data:labels.map(l=>mData[l]?.cost||0),borderColor:'#ef4444',fill:false,tension:.3,pointRadius:4}
+        ]},
+        options:{scales:{y:{beginAtZero:true}}}
+      });
+    }
+  }
+  // Site progress
+  const prog=document.getElementById('siteProgressList');
+  prog.innerHTML=sites.map(s=>{
+    const dlvd=totalDelivered(s.id);
+    const pct=s.qty>0?Math.min(100,Math.round(dlvd/s.qty*100)):0;
+    return `<div class="mb-3">
+      <div class="d-flex justify-content-between mb-1">
+        <span style="font-size:.83rem;font-weight:600">${s.name}</span>
+        <span style="font-size:.8rem;color:#64748b">${dlvd}/${s.qty} (${pct}%)</span>
+      </div>
+      <div class="progress"><div class="progress-bar ${pct>=100?'bg-success':'bg-primary'}" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('')||'<p class="text-muted text-center py-3">현장 없음</p>';
+}
+
+// =================== UTILS ===================
+function genId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function isEdit(id) { return !!id; }
+
+function toast(msg, type='') {
+  const el=document.createElement('div');
+  el.className='toast-msg '+type;
+  el.textContent=msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(()=>el.remove(),3000);
+}
+
+// =================== START ===================
+initLogin();
+</script>
+</body>
+</html>
