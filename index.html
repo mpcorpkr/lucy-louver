@@ -337,7 +337,16 @@ tbody tr:hover{background:#f8fafc}
           </div>
           <div class="col-12"><label class="form-label">현장 주소</label><input class="form-control" id="s_addr"></div>
           <div class="col-md-6"><label class="form-label">준공일</label><input class="form-control" type="date" id="s_compDate"></div>
-          <div class="col-md-6"><label class="form-label">결재일</label><input class="form-control" type="date" id="s_payDate"></div>
+          <div class="col-md-6">
+            <label class="form-label">결재일</label>
+            <div class="d-flex gap-2">
+              <select class="form-select" id="s_payDate" onchange="toggleDaySel('s_payDate','s_payDate_day')">
+                <option value="말일">말일</option>
+                <option value="직접입력">직접입력</option>
+              </select>
+              <select class="form-select" id="s_payDate_day" style="display:none;max-width:90px"></select>
+            </div>
+          </div>
           <div class="col-12"><hr class="my-1"><small class="text-primary fw-bold">공사 담당자</small></div>
           <div class="col-md-4"><label class="form-label">이름</label><input class="form-control" id="s_cm_name"></div>
           <div class="col-md-4"><label class="form-label">연락처</label><input class="form-control" id="s_cm_tel"></div>
@@ -346,7 +355,18 @@ tbody tr:hover{background:#f8fafc}
           <div class="col-md-4"><label class="form-label">이름</label><input class="form-control" id="s_ki_name"></div>
           <div class="col-md-4"><label class="form-label">연락처</label><input class="form-control" id="s_ki_tel"></div>
           <div class="col-md-4"><label class="form-label">이메일</label><input class="form-control" id="s_ki_email"></div>
-          <div class="col-md-6"><label class="form-label">기성 마감일</label><input class="form-control" type="date" id="s_ki_due"></div>
+          <div class="col-md-6">
+            <label class="form-label">기성마감일</label>
+            <div class="d-flex gap-2">
+              <select class="form-select" id="s_ki_due" onchange="toggleDaySel('s_ki_due','s_ki_due_day')">
+                <option value="말일">말일</option>
+                <option value="20일">20일</option>
+                <option value="25일">25일</option>
+                <option value="직접입력">직접입력</option>
+              </select>
+              <select class="form-select" id="s_ki_due_day" style="display:none;max-width:90px"></select>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -771,17 +791,24 @@ async function loadAll() {
 function safeJSON(v, def) { try { return v ? JSON.parse(v) : def; } catch { return def; } }
 
 function mkSite(r, i) {
+  // A:현장명 B:시공사 C:구매회사 D:루버타입 E:계약개수 F:단가 G:가로 H:세로
+  // I:색상코드 J:포장 K:시공 L:방충망타입 M:사춤코킹 N:현장주소 O:준공일 P:결재일
+  // Q:공사담당자명 R:공사담당자연락처 S:공사담당자이메일
+  // T:기성담당자명 U:기성담당자연락처 V:기성담당자이메일 W:기성마감일 X:상태
+  const rowNum = i + 2;
   return {
-    _row:i+2, id:String(r[0]||''), name:String(r[1]||''), contractor:String(r[2]||''),
-    buyer:String(r[3]||''), louverType:String(r[4]||''), qty:+r[5]||0,
-    ...(S.perm.canPrice ? { unitPrice:+r[6]||0 } : {}),
-    width:String(r[7]||''), height:String(r[8]||''),
-    colors:safeJSON(r[9],[]),
-    packing:String(r[10]||'미포함'), install:String(r[11]||'미포함'),
-    screen:String(r[12]||'없음'), caulk:String(r[13]||'없음'),
-    addr:String(r[14]||''), compDate:String(r[15]||''), payDate:String(r[16]||''),
-    cmName:String(r[17]||''), cmTel:String(r[18]||''), cmEmail:String(r[19]||''),
-    kiName:String(r[20]||''), kiTel:String(r[21]||''), kiEmail:String(r[22]||''), kiDue:String(r[23]||'')
+    _row:rowNum, id:String(rowNum),
+    name:String(r[0]||''), contractor:String(r[1]||''), buyer:String(r[2]||''),
+    louverType:String(r[3]||''), qty:+r[4]||0,
+    ...(S.perm.canPrice ? { unitPrice:+r[5]||0 } : {}),
+    width:String(r[6]||''), height:String(r[7]||''),
+    colors:safeJSON(r[8],[]),
+    packing:String(r[9]||'내부'), install:String(r[10]||'포함'),
+    screen:String(r[11]||'고정형'), caulk:String(r[12]||'포함'),
+    addr:String(r[13]||''), compDate:String(r[14]||''), payDate:String(r[15]||''),
+    cmName:String(r[16]||''), cmTel:String(r[17]||''), cmEmail:String(r[18]||''),
+    kiName:String(r[19]||''), kiTel:String(r[20]||''), kiEmail:String(r[21]||''),
+    kiDue:String(r[22]||''), status:String(r[23]||'')
   };
 }
 
@@ -991,7 +1018,7 @@ function openSiteModal(id) {
   const clear = ids => ids.forEach(f=>{ const e=document.getElementById(f); if(e) e.value=''; });
   clear(['s_name','s_contractor','s_buyer','s_width','s_height','s_colors','s_addr',
     's_cm_name','s_cm_tel','s_cm_email','s_ki_name','s_ki_tel','s_ki_email',
-    's_qty','s_unitPrice','s_compDate','s_payDate','s_ki_due']);
+    's_qty','s_unitPrice','s_compDate']);
   document.getElementById('s_louverType').value='';
   document.getElementById('s_priceWrap').style.display = S.perm.canPrice?'':'none';
   // reset selects
@@ -999,6 +1026,12 @@ function openSiteModal(id) {
   document.getElementById('s_install').value='포함';
   document.getElementById('s_screen').value='고정형';
   document.getElementById('s_caulk').value='포함';
+  // init day selects & reset day combos
+  initDaySel('s_payDate_day'); initDaySel('s_ki_due_day');
+  document.getElementById('s_payDate').value='말일';
+  document.getElementById('s_ki_due').value='말일';
+  document.getElementById('s_payDate_day').style.display='none';
+  document.getElementById('s_ki_due_day').style.display='none';
   if (isEdit) {
     const s=S.data.sites.find(x=>x.id===id); if(!s) return;
     document.getElementById('s_name').value=s.name;
@@ -1016,14 +1049,14 @@ function openSiteModal(id) {
     document.getElementById('s_caulk').value=s.caulk||'포함';
     document.getElementById('s_addr').value=s.addr;
     document.getElementById('s_compDate').value=s.compDate;
-    document.getElementById('s_payDate').value=s.payDate;
+    setDayCombo('s_payDate','s_payDate_day',s.payDate,['말일']);
     document.getElementById('s_cm_name').value=s.cmName;
     document.getElementById('s_cm_tel').value=s.cmTel;
     document.getElementById('s_cm_email').value=s.cmEmail;
     document.getElementById('s_ki_name').value=s.kiName;
     document.getElementById('s_ki_tel').value=s.kiTel;
     document.getElementById('s_ki_email').value=s.kiEmail;
-    document.getElementById('s_ki_due').value=s.kiDue;
+    setDayCombo('s_ki_due','s_ki_due_day',s.kiDue,['말일','20일','25일']);
   }
   new bootstrap.Modal(document.getElementById('siteModal')).show();
 }
@@ -1036,25 +1069,31 @@ async function saveSite() {
   const colors=document.getElementById('s_colors').value.split(',').map(c=>c.trim()).filter(Boolean);
   const getSel=id=>document.getElementById(id)?.value||'';
   const row=[
-    S.editingIds.site||genId(), name,
+    // A:현장명 B:시공사 C:구매회사 D:루버타입 E:계약개수 F:단가 G:가로 H:세로
+    name,
     document.getElementById('s_contractor').value.trim(),
     document.getElementById('s_buyer').value.trim(),
     document.getElementById('s_louverType').value, qty,
     S.perm.canPrice?(+document.getElementById('s_unitPrice').value||0):'',
     document.getElementById('s_width').value.trim(),
     document.getElementById('s_height').value.trim(),
+    // I:색상코드 J:포장 K:시공 L:방충망타입 M:사춤코킹
     JSON.stringify(colors),
     getSel('s_packing'),getSel('s_install'),getSel('s_screen'),getSel('s_caulk'),
+    // N:현장주소 O:준공일 P:결재일
     document.getElementById('s_addr').value.trim(),
     document.getElementById('s_compDate').value,
-    document.getElementById('s_payDate').value,
+    getDayVal('s_payDate','s_payDate_day'),
+    // Q:공사담당자명 R:공사담당자연락처 S:공사담당자이메일
     document.getElementById('s_cm_name').value.trim(),
     document.getElementById('s_cm_tel').value.trim(),
     document.getElementById('s_cm_email').value.trim(),
+    // T:기성담당자명 U:기성담당자연락처 V:기성담당자이메일 W:기성마감일 X:상태
     document.getElementById('s_ki_name').value.trim(),
     document.getElementById('s_ki_tel').value.trim(),
     document.getElementById('s_ki_email').value.trim(),
-    document.getElementById('s_ki_due').value
+    getDayVal('s_ki_due','s_ki_due_day'),
+    ''  // X:상태
   ];
   if(S.editingIds.site){
     const s=S.data.sites.find(x=>x.id===S.editingIds.site);
@@ -1584,6 +1623,39 @@ function renderStats() {
 
 // =================== UTILS ===================
 function genId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+// 1~31일 옵션 채우기
+function initDaySel(selId) {
+  const el=document.getElementById(selId); if(!el) return;
+  el.innerHTML='<option value="">선택</option>';
+  for(let i=1;i<=31;i++) el.innerHTML+=`<option value="${i}일">${i}일</option>`;
+}
+
+// 직접입력 선택 시 day select 토글
+function toggleDaySel(mainId, dayId) {
+  document.getElementById(dayId).style.display =
+    document.getElementById(mainId).value==='직접입력' ? '' : 'none';
+}
+
+// 저장 시 최종값 반환 ("말일","20일","25일" 또는 "N일")
+function getDayVal(mainId, dayId) {
+  const v=document.getElementById(mainId).value;
+  if(v==='직접입력') return document.getElementById(dayId).value||'말일';
+  return v;
+}
+
+// 수정 모드: 저장된 값을 콤보박스에 복원
+function setDayCombo(mainId, dayId, storedVal, presets) {
+  const v=storedVal||'말일';
+  if(presets.includes(v)){
+    document.getElementById(mainId).value=v;
+    document.getElementById(dayId).style.display='none';
+  } else {
+    document.getElementById(mainId).value='직접입력';
+    document.getElementById(dayId).value=v;
+    document.getElementById(dayId).style.display='';
+  }
+}
 function isEdit(id) { return !!id; }
 
 function toast(msg, type='') {
