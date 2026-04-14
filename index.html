@@ -297,42 +297,43 @@ tbody tr:hover{background:#f8fafc}
           <div class="col-md-6"><label class="form-label">루버타입</label>
             <select class="form-select" id="s_louverType">
               <option value="">선택</option>
-              <option>외벽루버</option><option>발코니루버</option><option>차양루버</option>
-              <option>실내루버</option><option>스크린루버</option><option>기타</option>
+              <option>일반형</option><option>연도형</option><option>분할형</option>
+              <option>연도분할형</option><option>케이스먼트형</option>
             </select>
           </div>
-          <div class="col-md-4"><label class="form-label">계약 개수 *</label><input class="form-control" type="number" id="s_qty" min="0"></div>
-          <div class="col-md-4" id="s_priceWrap"><label class="form-label">단가 (원)</label><input class="form-control" type="number" id="s_unitPrice" min="0"></div>
-          <div class="col-md-4"><label class="form-label">규격 가로(mm)</label><input class="form-control" id="s_width"></div>
-          <div class="col-md-4"><label class="form-label">규격 세로(mm)</label><input class="form-control" id="s_height"></div>
+          <div class="col-md-4"><label class="form-label">가로(mm)</label><input class="form-control" id="s_width"></div>
+          <div class="col-md-4"><label class="form-label">세로(mm)</label><input class="form-control" id="s_height"></div>
+          <div class="col-md-4"><label class="form-label">계약개수 *</label><input class="form-control" type="number" id="s_qty" min="0"></div>
+          <div class="col-md-4" id="s_priceWrap"><label class="form-label">단가(원)</label><input class="form-control" type="number" id="s_unitPrice" min="0"></div>
           <div class="col-12"><label class="form-label">색상코드 (쉼표로 구분)</label><input class="form-control" id="s_colors" placeholder="예) RAL7024, RAL9006"></div>
           <div class="col-md-3">
             <label class="form-label">포장</label>
-            <div class="d-flex gap-3 mt-1">
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_packing" id="sp_y" value="포함"><label class="form-check-label" for="sp_y">포함</label></div>
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_packing" id="sp_n" value="미포함" checked><label class="form-check-label" for="sp_n">미포함</label></div>
-            </div>
+            <select class="form-select" id="s_packing">
+              <option value="내부">내부</option>
+              <option value="외부">외부</option>
+              <option value="내외부">내외부</option>
+            </select>
           </div>
           <div class="col-md-3">
             <label class="form-label">시공</label>
-            <div class="d-flex gap-3 mt-1">
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_install" id="si_y" value="포함"><label class="form-check-label" for="si_y">포함</label></div>
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_install" id="si_n" value="미포함" checked><label class="form-check-label" for="si_n">미포함</label></div>
-            </div>
+            <select class="form-select" id="s_install">
+              <option value="포함">포함</option>
+              <option value="불포함">불포함</option>
+            </select>
           </div>
           <div class="col-md-3">
             <label class="form-label">방충망타입</label>
-            <div class="d-flex gap-3 mt-1">
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_screen" id="ss_y" value="있음"><label class="form-check-label" for="ss_y">있음</label></div>
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_screen" id="ss_n" value="없음" checked><label class="form-check-label" for="ss_n">없음</label></div>
-            </div>
+            <select class="form-select" id="s_screen">
+              <option value="고정형">고정형</option>
+              <option value="롤형">롤형</option>
+            </select>
           </div>
           <div class="col-md-3">
             <label class="form-label">사춤코킹</label>
-            <div class="d-flex gap-3 mt-1">
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_caulk" id="sc_y" value="있음"><label class="form-check-label" for="sc_y">있음</label></div>
-              <div class="form-check"><input class="form-check-input" type="radio" name="s_caulk" id="sc_n" value="없음" checked><label class="form-check-label" for="sc_n">없음</label></div>
-            </div>
+            <select class="form-select" id="s_caulk">
+              <option value="포함">포함</option>
+              <option value="불포함">불포함</option>
+            </select>
           </div>
           <div class="col-12"><label class="form-label">현장 주소</label><input class="form-control" id="s_addr"></div>
           <div class="col-md-6"><label class="form-label">준공일</label><input class="form-control" type="date" id="s_compDate"></div>
@@ -993,10 +994,11 @@ function openSiteModal(id) {
     's_qty','s_unitPrice','s_compDate','s_payDate','s_ki_due']);
   document.getElementById('s_louverType').value='';
   document.getElementById('s_priceWrap').style.display = S.perm.canPrice?'':'none';
-  // reset radios
-  [['s_packing','미포함'],['s_install','미포함'],['s_screen','없음'],['s_caulk','없음']].forEach(([n,v])=>{
-    const el=document.querySelector(`[name="${n}"][value="${v}"]`); if(el) el.checked=true;
-  });
+  // reset selects
+  document.getElementById('s_packing').value='내부';
+  document.getElementById('s_install').value='포함';
+  document.getElementById('s_screen').value='고정형';
+  document.getElementById('s_caulk').value='포함';
   if (isEdit) {
     const s=S.data.sites.find(x=>x.id===id); if(!s) return;
     document.getElementById('s_name').value=s.name;
@@ -1008,9 +1010,10 @@ function openSiteModal(id) {
     document.getElementById('s_width').value=s.width;
     document.getElementById('s_height').value=s.height;
     document.getElementById('s_colors').value=Array.isArray(s.colors)?s.colors.join(', '):(s.colors||'');
-    [[s.packing,'s_packing'],[s.install,'s_install'],[s.screen,'s_screen'],[s.caulk,'s_caulk']].forEach(([val,name])=>{
-      const el=document.querySelector(`[name="${name}"][value="${val}"]`); if(el) el.checked=true;
-    });
+    document.getElementById('s_packing').value=s.packing||'내부';
+    document.getElementById('s_install').value=s.install||'포함';
+    document.getElementById('s_screen').value=s.screen||'고정형';
+    document.getElementById('s_caulk').value=s.caulk||'포함';
     document.getElementById('s_addr').value=s.addr;
     document.getElementById('s_compDate').value=s.compDate;
     document.getElementById('s_payDate').value=s.payDate;
@@ -1031,7 +1034,7 @@ async function saveSite() {
   if(!name){toast('현장명을 입력하세요','error');return;}
   if(!qty){toast('계약 개수를 입력하세요','error');return;}
   const colors=document.getElementById('s_colors').value.split(',').map(c=>c.trim()).filter(Boolean);
-  const getRad=name=>document.querySelector(`[name="${name}"]:checked`)?.value||'';
+  const getSel=id=>document.getElementById(id)?.value||'';
   const row=[
     S.editingIds.site||genId(), name,
     document.getElementById('s_contractor').value.trim(),
@@ -1041,7 +1044,7 @@ async function saveSite() {
     document.getElementById('s_width').value.trim(),
     document.getElementById('s_height').value.trim(),
     JSON.stringify(colors),
-    getRad('s_packing'),getRad('s_install'),getRad('s_screen'),getRad('s_caulk'),
+    getSel('s_packing'),getSel('s_install'),getSel('s_screen'),getSel('s_caulk'),
     document.getElementById('s_addr').value.trim(),
     document.getElementById('s_compDate').value,
     document.getElementById('s_payDate').value,
