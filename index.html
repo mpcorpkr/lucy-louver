@@ -48,6 +48,9 @@ body{margin:0;font-family:'Malgun Gothic',sans-serif;background:#f1f5f9;color:#1
 .table-responsive{border-radius:10px;overflow:hidden}
 table{margin:0}
 thead th{background:#f8fafc;font-size:.82rem;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap;padding:10px 12px}
+thead th.sortable{cursor:pointer;user-select:none;transition:background .15s}
+thead th.sortable:hover{background:#e2e8f0}
+.sort-arrow{margin-left:4px;font-size:.75rem;color:var(--lucy);display:inline-block;min-width:10px}
 tbody td{font-size:.85rem;vertical-align:middle;padding:10px 12px;border-color:#f1f5f9}
 tbody tr:hover{background:#f8fafc}
 /* Form */
@@ -186,7 +189,12 @@ tbody tr:hover{background:#f8fafc}
       <div class="card"><div class="card-body p-0">
         <div class="table-responsive"><table class="table table-hover mb-0">
           <thead><tr>
-            <th>납품일</th><th>현장명</th><th>규격</th><th>색상</th><th>수량</th>
+            <th class="sortable" onclick="setDlvSort('date')">납품일<span class="sort-arrow" data-col="date"></span></th>
+            <th>품목</th>
+            <th class="sortable" onclick="setDlvSort('site')">현장명<span class="sort-arrow" data-col="site"></span></th>
+            <th class="sortable" onclick="setDlvSort('spec')">규격<span class="sort-arrow" data-col="spec"></span></th>
+            <th>색상</th>
+            <th class="sortable" onclick="setDlvSort('qty')">수량<span class="sort-arrow" data-col="qty"></span></th>
             <th id="dlv-th-cost">차량/화물비</th>
             <th>비고</th><th>관리</th>
           </tr></thead>
@@ -579,7 +587,8 @@ const S = {
   user:null, perm:null, googleToken:null,
   currentPage:'dashboard',
   editingIds:{ site:null, dlv:null, dh:null, mg:null, cust:null },
-  data:{ sites:[], deliveries:[], ordersDH:[], ordersMG:[], customers:[] },
+  data:{ sites:[], deliveries:[], ordersDH:[], ordersMG:[], customers:[], dlvColMap:{} },
+  dlvSort:{ col:'date', dir:'desc' }, // 기본: 납품일 최신순
   charts:{}
 };
 let selectedUser = null;
@@ -785,17 +794,15 @@ async function loadAll() {
   }
 }
 
-// 납품이력 시트 헤더 자동 생성 (A~G 7컬럼)
+// 납품이력 시트 기본 헤더 (A1이 완전히 비어있을 때만 자동 생성. 사용자가
+// 헤더를 재배열하거나 추가 컬럼을 넣어도 덮어쓰지 않음 — 열 순서는 읽기 시
+// 헤더명으로 역조회하므로 자유롭게 변경 가능)
 async function ensureDlvHeader() {
   const HDR=['출고일자','업체명','현장명','품목','가로','세로','개수'];
-  const r = await apiRequest('GET', `${SH.DLV}!A1:G1`);
-  const cur = (r && r.values && r.values[0]) ? r.values[0] : [];
-  // A1이 비어있거나 우리가 관리한 헤더('출고일자' 또는 구버전 '납품일')면 → 7칸 동기화
-  if (!cur[0] || cur[0] === '출고일자' || cur[0] === '납품일') {
-    const differs = HDR.some((h,i)=>(cur[i]||'')!==h);
-    if (differs) {
-      await apiRequest('PUT', `${SH.DLV}!A1:G1`, [HDR], {valueInputOption:'RAW'});
-    }
+  const r = await apiRequest('GET', `${SH.DLV}!A1:A1`);
+  const a1 = r?.values?.[0]?.[0];
+  if (!a1) {
+    await apiRequest('PUT', `${SH.DLV}!A1:G1`, [HDR], {valueInputOption:'RAW'});
   }
 }
 
@@ -868,34 +875,41 @@ function mkSite(r, i) {
   };
 }
 
-// 납품이력 시트 스키마 (7컬럼):
-// A:출고일자 B:업체명 C:현장명 D:품목 E:가로 F:세로 G:개수
-// 품목: '루버' / 'SMA셋' / 'BIAS셋' ('무전원 자동루버'는 '루버'로 정규화)
-function mkDelivery(r, i, siteByName) {
-  const siteName = String(r[2]||'').trim();
+// 납품이력 시트 스키마 (헤더명 기반, 열 순서 무관):
+//   출고일자(또는 '납품일') / 업체명 / 현장명 / 품목 / 가로 / 세로 / 개수
+// 품목: '루버' / 'SMA셋' / 'BIAS셋' ('무전원 자동루버' → '루버' 자동 정규화)
+function mkDelivery(r, i, colMap, siteByName) {
+  // 여러 이름 중 가장 먼저 매칭되는 컬럼값 반환 (legacy alias 지원)
+  const get = (...names) => {
+    for (const n of names) {
+      const idx = colMap[n];
+      if (idx != null && r[idx] !== undefined) return r[idx];
+    }
+    return undefined;
+  };
+  const siteName = String(get('현장명')||'').trim();
   const site = siteByName ? siteByName[siteName] : null;
-  const itemRaw = String(r[3]||'').trim();
+  const itemRaw = String(get('품목')||'').trim();
   const item = itemRaw === '무전원 자동루버' ? '루버' : (itemRaw || '루버');
-  const specW = String(r[4]||'').trim();
-  const specH = String(r[5]||'').trim();
+  const specW = String(get('가로')||'').trim();
+  const specH = String(get('세로')||'').trim();
   const spec  = (specW || specH) ? `${specW}×${specH}` : '';
-  const qty   = +r[6]||0;
+  const qty   = +get('개수')||0;
   return {
     _row:i+2, id:String(i+2),
-    date:parseDate(r[0]),
-    contractor:String(r[1]||''),
+    date: parseDate(get('출고일자','납품일')),
+    contractor: String(get('업체명','시공사')||''),
     siteName,
     siteId: site ? site.id : '',
-    item, itemRaw,            // 품목 (정규화된 값 / 원본)
-    type: item,                // 하위호환: 루버/SMA셋/BIAS셋
-    specW, specH, spec,        // 규격: "가로×세로" (표시 시 mm 부가)
+    item, itemRaw,
+    type: item,
+    specW, specH, spec,
     qty,
-    // 집계 보조 필드
     louverQty:        (item==='루버' || item==='BIAS셋') ? qty : 0,
     smaSetQty:        item==='SMA셋'  ? qty : 0,
     biasSetQty:       item==='BIAS셋' ? qty : 0,
-    smaStandaloneQty: 0,       // 신 스키마에서는 사용 안 함
-    color:'', note:''          // 신 스키마에는 없는 필드 (UI 호환용 공란)
+    smaStandaloneQty: 0,
+    color:'', note:''
   };
 }
 
@@ -931,12 +945,24 @@ function mkCustomer(r, i) {
 // =================== LOADERS ===================
 async function loadSites()     { const r=await apiRequest('GET',`${SH.SITE}!A2:AJ`); if(r) S.data.sites=(r.values||[]).filter(row=>row[0]).map(mkSite); }
 async function loadDeliveries(){
-  const r=await apiRequest('GET',`${SH.DLV}!A2:G`);
+  // 1행을 포함한 전체 범위를 읽어서 헤더명 → 컬럼 인덱스 맵 생성
+  const r=await apiRequest('GET',`${SH.DLV}!A1:Z`);
   if(!r) return;
+  const values = r.values || [];
+  if (values.length < 1) { S.data.deliveries=[]; S.data.dlvColMap={}; return; }
+  const header = values[0] || [];
+  const colMap = {};
+  header.forEach((h,i)=>{
+    const name = String(h||'').trim();
+    if (name) colMap[name] = i;
+  });
+  S.data.dlvColMap = colMap;
   const siteByName={}; S.data.sites.forEach(s=>{ siteByName[s.name]=s; });
-  S.data.deliveries=(r.values||[])
-    .filter(row=>row[0]||row[2]) // 출고일자 또는 현장명
-    .map((row,i)=>mkDelivery(row,i,siteByName));
+  const dateIdx = colMap['출고일자'] ?? colMap['납품일'];
+  const siteIdx = colMap['현장명'];
+  S.data.deliveries = values.slice(1)
+    .filter(row=>(dateIdx!=null && row[dateIdx]) || (siteIdx!=null && row[siteIdx]))
+    .map((row,i)=>mkDelivery(row,i,colMap,siteByName));
 }
 async function loadOrdersDH()  { const r=await apiRequest('GET',`${SH.DH}!A2:J`);   if(r) S.data.ordersDH=(r.values||[]).filter(row=>row[0]).map(mkOrderDH); }
 async function loadOrdersMG()  { const r=await apiRequest('GET',`${SH.MG}!A2:Q`);   if(r) S.data.ordersMG=(r.values||[]).filter(row=>row[0]).map(mkOrderMG); }
@@ -1791,28 +1817,65 @@ async function deleteSite(id) {
 }
 
 // =================== DELIVERY ===================
+// 컬럼 헤더 클릭 → 정렬 토글
+function setDlvSort(col) {
+  if (!S.dlvSort) S.dlvSort = { col:'date', dir:'desc' };
+  if (S.dlvSort.col === col) {
+    S.dlvSort.dir = S.dlvSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    S.dlvSort.col = col;
+    S.dlvSort.dir = col==='date' ? 'desc' : 'asc'; // 날짜는 기본 최신순, 나머지는 오름차순부터
+  }
+  renderDeliveryList();
+}
+
+function _dlvSortVal(d, col) {
+  if (col==='date') return d.date || '';
+  if (col==='site') return d.siteName || '';
+  if (col==='spec') {
+    // 가로, 세로 숫자 조합으로 정렬 (문자열 비교 시 '1000'이 '970'보다 작게 정렬되는 문제 회피)
+    const w=+d.specW||0, h=+d.specH||0;
+    return w*100000 + h;
+  }
+  if (col==='qty')  return +d.qty || 0;
+  return '';
+}
+
 function renderDeliveryList() {
   const q=(document.getElementById('dlvSearch')?.value||'').toLowerCase();
   document.getElementById('dlv-th-cost').style.display=S.perm.canViewDeliveryCost?'':'none';
-  const list=[...S.data.deliveries].filter(d=>!q||(d.siteName||'').toLowerCase().includes(q))
-    .sort((a,b)=>b.date.localeCompare(a.date));
+  const sort = S.dlvSort || {col:'date', dir:'desc'};
+  const mult = sort.dir==='asc' ? 1 : -1;
+  const list=[...S.data.deliveries]
+    .filter(d=>!q||(d.siteName||'').toLowerCase().includes(q))
+    .sort((a,b)=>{
+      const va=_dlvSortVal(a,sort.col), vb=_dlvSortVal(b,sort.col);
+      if (typeof va==='number' && typeof vb==='number') return (va-vb)*mult;
+      return String(va).localeCompare(String(vb),'ko')*mult;
+    });
+  // 헤더 화살표 업데이트
+  document.querySelectorAll('.sort-arrow').forEach(el=>{
+    el.textContent = (el.dataset.col===sort.col) ? (sort.dir==='asc'?' ▲':' ▼') : '';
+  });
+
   const tbody=document.getElementById('dlvTbody');
-  if(!list.length){tbody.innerHTML='<tr><td colspan="8" class="text-center py-4 text-muted">납품 이력 없음</td></tr>';return;}
+  if(!list.length){tbody.innerHTML='<tr><td colspan="9" class="text-center py-4 text-muted">납품 이력 없음</td></tr>';return;}
   tbody.innerHTML=list.map(d=>{
     const item = d.item||d.type||'루버';
     const bg = item==='SMA셋' ? 'bg-success'
              : item==='BIAS셋' ? 'bg-warning text-dark'
              : 'bg-primary';
-    const typeBadge = `<span class="badge ${bg} me-1" style="font-size:.7rem">${item}</span>`;
+    const typeBadge = `<span class="badge ${bg}" style="font-size:.72rem">${item}</span>`;
     const specCell = d.spec ? `${d.spec}mm` : '-';
     return `<tr>
-      <td>${d.date}</td>
-      <td class="fw-bold">${typeBadge}${d.siteName}</td>
-      <td>${specCell}</td>
-      <td>-</td>
-      <td class="text-center">${d.qty||0}</td>
-      ${S.perm.canViewDeliveryCost?`<td>-</td>`:''}
-      <td>-</td>
+      <td class="text-nowrap">${d.date||'-'}</td>
+      <td>${typeBadge}</td>
+      <td class="fw-bold">${d.siteName||'-'}</td>
+      <td class="text-nowrap">${specCell}</td>
+      <td class="text-muted">-</td>
+      <td class="text-center fw-bold">${d.qty||0}</td>
+      ${S.perm.canViewDeliveryCost?`<td class="text-muted">-</td>`:''}
+      <td class="text-muted">-</td>
       <td>
         ${(S.perm.canEditDelivery||S.perm.canEditSite)?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDlvModal('${d.id}')"><i class="bi bi-pencil"></i></button>`:''}
         ${S.perm.canDeleteDelivery?`<button class="btn btn-sm btn-outline-danger" onclick="deleteDlv('${d.id}')"><i class="bi bi-trash"></i></button>`:''}
@@ -1980,25 +2043,40 @@ async function saveDelivery() {
     items.push({item, specW, specH, qty});
   }
 
-  // A:출고일자 B:업체명 C:현장명 D:품목 E:가로 F:세로 G:개수
-  const rows = items.map(it => [
-    date,                 // A
-    site.contractor||'',  // B
-    site.name,            // C
-    it.item,              // D
-    it.specW,             // E
-    it.specH,             // F
-    it.qty                // G
-  ]);
+  // 헤더 colMap 기반으로 row 조립 (열 순서가 달라도 올바른 컬럼에 값이 들어감)
+  const colMap = S.data.dlvColMap || {};
+  if (!Object.keys(colMap).length) {
+    toast('납품이력 시트 헤더를 읽지 못했습니다. 새로고침 후 다시 시도하세요.','error');
+    return;
+  }
+  const colCount = Math.max(...Object.values(colMap)) + 1;
+  const lastCol = colLetter(colCount-1);
+  const buildRow = it => {
+    const row = new Array(colCount).fill('');
+    const setByHeader = (names, val) => {
+      for (const n of names){
+        const idx=colMap[n];
+        if (idx!=null){ row[idx]=val; return; }
+      }
+    };
+    setByHeader(['출고일자','납품일'],      date);
+    setByHeader(['업체명','시공사'],         site.contractor||'');
+    setByHeader(['현장명'],                  site.name);
+    setByHeader(['품목'],                    it.item);
+    setByHeader(['가로'],                    it.specW);
+    setByHeader(['세로'],                    it.specH);
+    setByHeader(['개수'],                    it.qty);
+    return row;
+  };
+  const rows = items.map(buildRow);
 
   const cfg={valueInputOption:'RAW'};
   if(S.editingIds.dlv){
-    // 수정: 기존 row는 첫 항목으로 갱신, 나머지 항목은 신규 append
     const d=S.data.deliveries.find(x=>x.id===S.editingIds.dlv);
-    if(d) await apiRequest('PUT',`${SH.DLV}!A${d._row}:G${d._row}`,[rows[0]],cfg);
-    if(rows.length>1) await apiRequest('POST',`${SH.DLV}!A:G`,rows.slice(1),cfg);
+    if(d) await apiRequest('PUT',`${SH.DLV}!A${d._row}:${lastCol}${d._row}`,[rows[0]],cfg);
+    if(rows.length>1) await apiRequest('POST',`${SH.DLV}!A:${lastCol}`,rows.slice(1),cfg);
   } else {
-    await apiRequest('POST',`${SH.DLV}!A:G`,rows,cfg);
+    await apiRequest('POST',`${SH.DLV}!A:${lastCol}`,rows,cfg);
   }
   bootstrap.Modal.getInstance(document.getElementById('dlvModal'))?.hide();
   toast(`${rows.length}건의 납품이 저장되었습니다`,'success');
@@ -2008,7 +2086,10 @@ async function saveDelivery() {
 async function deleteDlv(id) {
   if(!confirm('납품 이력을 삭제하시겠습니까?')) return;
   const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
-  await apiRequest('PUT',`${SH.DLV}!A${d._row}:G${d._row}`,[Array(7).fill('')]);
+  const colMap = S.data.dlvColMap || {};
+  const colCount = Object.keys(colMap).length ? Math.max(...Object.values(colMap)) + 1 : 7;
+  const lastCol = colLetter(colCount-1);
+  await apiRequest('PUT',`${SH.DLV}!A${d._row}:${lastCol}${d._row}`,[Array(colCount).fill('')]);
   toast('납품 이력이 삭제되었습니다','success');
   await loadDeliveries(); renderDeliveryList();
 }
@@ -2404,6 +2485,13 @@ function renderStats() {
 
 // =================== UTILS ===================
 function genId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+// 0-based 컬럼 인덱스 → 시트 컬럼 문자 (0=A, 25=Z, 26=AA ...)
+function colLetter(n) {
+  let s=''; n=Math.max(0,n|0);
+  do { s = String.fromCharCode(65 + (n%26)) + s; n = Math.floor(n/26) - 1; } while (n>=0);
+  return s;
+}
 
 // 1~31일 옵션 채우기
 function initDaySel(selId) {
