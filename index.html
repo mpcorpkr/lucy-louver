@@ -3001,17 +3001,24 @@ function renderSchedule() {
   const arrow = c => schSort.col===c ? (schSort.dir==='asc' ? '▲' : '▼') : '';
 
   // ===== HTML 빌드 =====
+  // rowspan 대신 2행 각각 전체 컬럼셋 렌더 (sticky 호환성 문제 회피)
+  // 1행: 고정 컬럼 영역은 빈 스페이서 + 연도 colspan
+  // 2행: 고정 컬럼 헤더(현장명 등) + 월 헤더
   let html = '<thead>';
   html += '<tr>';
-  html += `<th rowspan="2" class="col-frozen c1 sortable" onclick="setSchSort('name')">현장명<span class="sch-arrow">${arrow('name')}</span></th>`;
-  html += '<th rowspan="2" class="col-frozen c2">시공사</th>';
-  html += '<th rowspan="2" class="col-frozen c3">준공일</th>';
-  html += `<th rowspan="2" class="col-frozen c4 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
+  html += '<th class="col-frozen c1 sch-spacer"></th>';
+  html += '<th class="col-frozen c2 sch-spacer"></th>';
+  html += '<th class="col-frozen c3 sch-spacer"></th>';
+  html += '<th class="col-frozen c4 sch-spacer"></th>';
   yearGroups.forEach(yg=>{
     html += `<th colspan="${yg.count}">${String(yg.y).slice(-2)}년</th>`;
   });
   html += '</tr>';
   html += '<tr>';
+  html += `<th class="col-frozen c1 sortable" onclick="setSchSort('name')">현장명<span class="sch-arrow">${arrow('name')}</span></th>`;
+  html += '<th class="col-frozen c2">시공사</th>';
+  html += '<th class="col-frozen c3">준공일</th>';
+  html += `<th class="col-frozen c4 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
   months.forEach(x=>{
     const isCur = x.key === todayKey;
     const curCls = isCur ? ' cur-month' : '';
