@@ -2913,10 +2913,16 @@ function switchStatsTab(tab, el) {
 function populateStatYearMonth() {
   const dlvYears = S.data.deliveries.map(d=>d.date?+d.date.slice(0,4):null).filter(Boolean);
   const siteYears = S.data.sites.map(s=>s.compDate?+s.compDate.slice(0,4):null).filter(Boolean);
-  const nowY = new Date().getFullYear();
-  const all = [...dlvYears, ...siteYears, nowY];
+  const now = new Date();
+  const nowY = now.getFullYear();
+  const nowM = now.getMonth()+1;
+  // 기본 시작: 5개월 전(현재월 포함 6개월 구간) — 연도 경계 자동 처리
+  const startDate = new Date(nowY, nowM-1-5, 1);
+  const startY = startDate.getFullYear();
+  const startM = startDate.getMonth()+1;
+  const all = [...dlvYears, ...siteYears, nowY, startY];
   const minY = Math.min(...all);
-  const maxY = Math.max(...all);
+  const maxY = Math.max(...all, nowY);
   const yrs = [];
   for (let y=minY; y<=maxY; y++) yrs.push(y);
   const yearOpts = yrs.map(y=>`<option value="${y}">${y}년</option>`).join('');
@@ -2929,12 +2935,14 @@ function populateStatYearMonth() {
     if (keep && [...el.options].some(o=>o.value===keep)) el.value = keep;
     else if (def != null) el.value = def;
   };
-  setOpts('schYearFrom',  yearOpts,  minY);
-  setOpts('schMonthFrom', monthOpts, 1);
-  setOpts('schYearTo',    yearOpts,  maxY);
-  setOpts('schMonthTo',   monthOpts, 12);
+  // 월별 납품현황 기본: 오늘 기준 최근 6개월 (시작월~현재월)
+  setOpts('schYearFrom',  yearOpts,  startY);
+  setOpts('schMonthFrom', monthOpts, startM);
+  setOpts('schYearTo',    yearOpts,  nowY);
+  setOpts('schMonthTo',   monthOpts, nowM);
+  // 월별 마감 내역서 기본: 현재 연월
   setOpts('invYear',      yearOpts,  nowY);
-  setOpts('invMonth',     monthOpts, new Date().getMonth()+1);
+  setOpts('invMonth',     monthOpts, nowM);
 }
 
 // 납품 스케줄 컬럼 정렬 토글
