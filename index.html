@@ -1182,9 +1182,9 @@ function renderDash강철() {
     S.charts.dashSite = new Chart(ctx,{
       type:'bar',
       data:{labels, datasets:[
-        {label:'납품완료', data:cs.map(r=>r.dlvd), backgroundColor:'rgba(16,185,129,.85)', borderRadius:4,
+        {label:'납품완료 D (Delivered)', data:cs.map(r=>r.dlvd), backgroundColor:'rgba(16,185,129,.85)', borderRadius:4,
           datalabels:{display:false}},
-        {label:'잔여',    data:cs.map(r=>r.rem),  backgroundColor:'rgba(239,68,68,.55)', borderRadius:4,
+        {label:'잔여 R (Remaining)',     data:cs.map(r=>r.rem),  backgroundColor:'rgba(239,68,68,.55)', borderRadius:4,
           datalabels:{
             anchor:'end', align:'top', offset:4, clamp:true,
             color:'#1e293b', font:{size:10, weight:'600'}, textAlign:'center',
@@ -1201,7 +1201,43 @@ function renderDash강철() {
       ]},
       options:{
         layout:{padding:{top:52}},
-        plugins:{legend:{position:'top'}, datalabels:{display:true}},
+        plugins:{
+          legend:{
+            position:'top',
+            labels:{
+              // 데이터셋 2개(납품완료/잔여) + 가상 'T (Total)' 항목 추가
+              generateLabels: (chart) => {
+                const items = chart.data.datasets.map((ds, i)=>({
+                  text: ds.label,
+                  fillStyle: ds.backgroundColor,
+                  strokeStyle: ds.backgroundColor,
+                  lineWidth: 0,
+                  hidden: !chart.isDatasetVisible(i),
+                  datasetIndex: i
+                }));
+                items.push({
+                  text: 'T (Total)',
+                  fillStyle: '#ffffff',
+                  strokeStyle: '#94a3b8',
+                  lineWidth: 1,
+                  hidden: false,
+                  datasetIndex: -1
+                });
+                return items;
+              }
+            },
+            // 가상 T 항목 클릭은 무시, 실제 데이터셋만 토글
+            onClick: (_e, legendItem, legend) => {
+              const idx = legendItem.datasetIndex;
+              if (idx < 0) return;
+              const chart = legend.chart;
+              const meta = chart.getDatasetMeta(idx);
+              meta.hidden = meta.hidden === null ? !chart.data.datasets[idx].hidden : null;
+              chart.update();
+            }
+          },
+          datalabels:{display:true}
+        },
         scales:{x:{stacked:true}, y:{stacked:true, beginAtZero:true}}
       },
       plugins: (typeof ChartDataLabels!=='undefined') ? [ChartDataLabels] : []
