@@ -562,6 +562,11 @@ tbody tr:hover{background:#f8fafc}
               <div id="d_siteSummaryBody"></div>
             </div>
           </div>
+          <!-- 비고 -->
+          <div class="col-12">
+            <label class="form-label">비고</label>
+            <input type="text" class="form-control" id="d_note" placeholder="예) 긴급 납품, 오전 배송 등">
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -937,11 +942,11 @@ async function loadAll() {
 // 헤더를 재배열하거나 추가 컬럼을 넣어도 덮어쓰지 않음 — 열 순서는 읽기 시
 // 헤더명으로 역조회하므로 자유롭게 변경 가능)
 async function ensureDlvHeader() {
-  const HDR=['출고일자','업체명','현장명','품목','가로','세로','개수'];
+  const HDR=['출고일자','업체명','현장명','품목','가로','세로','개수','비고'];
   const r = await apiRequest('GET', `${SH.DLV}!A1:A1`);
   const a1 = r?.values?.[0]?.[0];
   if (!a1) {
-    await apiRequest('PUT', `${SH.DLV}!A1:G1`, [HDR], {valueInputOption:'RAW'});
+    await apiRequest('PUT', `${SH.DLV}!A1:H1`, [HDR], {valueInputOption:'RAW'});
   }
 }
 
@@ -1049,7 +1054,8 @@ function mkDelivery(r, i, colMap, siteByName) {
     smaSetQty:        item==='SMA셋'  ? qty : 0,
     biasSetQty:       item==='BIAS셋' ? qty : 0,
     smaStandaloneQty: 0,
-    color:'', note:''
+    color:'',
+    note: String(get('비고')||'')
   };
 }
 
@@ -1330,23 +1336,30 @@ function renderDash강철() {
         return { s, qty:s.qty, dlvd, rem:Math.max(0, s.qty-dlvd) };
       })
       .sort((a,b)=>b.rem-a.rem);
-    const cs = allRows.slice(0,14);
+    // 전체 현장 표시 (슬라이스 제거, 스크롤로 탐색)
+    const cs = allRows;
     const isMobile = window.innerWidth <= 768;
     const maxLen = isMobile ? 15 : 8;
     const labels = cs.map(r => r.s.name.length>maxLen ? r.s.name.slice(0,maxLen)+'…' : r.s.name);
 
-    // 모바일: 캔버스 높이를 행 수 × 50px로 확장하고 wrapper는 스크롤 가능
+    // wrapper + canvas 크기 설정
     const wrap = document.getElementById('dashSiteChartWrap');
+    if (wrap) { wrap.style.maxHeight=''; wrap.style.overflowY=''; wrap.style.overflowX=''; }
     if (isMobile) {
+      // 모바일: 세로 스크롤, 전체 현장 표시
       if (wrap) { wrap.style.maxHeight='65vh'; wrap.style.overflowY='auto'; wrap.style.overflowX='hidden'; }
       ctx.style.height = Math.max(200, cs.length * 50) + 'px';
       ctx.style.width = '100%';
       ctx.removeAttribute('height');
+      ctx.removeAttribute('width');
     } else {
-      if (wrap) { wrap.style.maxHeight=''; wrap.style.overflowY=''; wrap.style.overflowX=''; }
-      ctx.style.height = '';
-      ctx.style.width = '';
-      ctx.setAttribute('height', '130');
+      // 데스크탑: 가로 스크롤, 현장당 120px (한 화면에 약 10개 표시)
+      const chartWidth = Math.max(cs.length * 120, 800);
+      if (wrap) { wrap.style.overflowX='scroll'; wrap.style.overflowY='hidden'; }
+      ctx.setAttribute('width', chartWidth);
+      ctx.setAttribute('height', 320);
+      ctx.style.width = chartWidth + 'px';
+      ctx.style.height = '320px';
     }
 
     S.charts.dashSite = new Chart(ctx,{
@@ -1374,8 +1387,9 @@ function renderDash강철() {
       ]},
       options:{
         indexAxis: isMobile ? 'y' : 'x',
-        maintainAspectRatio: !isMobile,
-        responsive: true,
+        maintainAspectRatio: false,
+        // 데스크탑: 고정 캔버스 너비를 사용해 가로 스크롤 활성화. 모바일: responsive로 폭 자동조정
+        responsive: isMobile,
         layout: { padding: isMobile ? {right:110} : {top:52} },
         plugins:{
           legend:{
@@ -2384,10 +2398,12 @@ function openDlvModal(id) {
   S.data.sites.forEach(s=>{ sel.innerHTML+=`<option value="${s.id}">${s.name}</option>`; });
   document.getElementById('d_date').value=new Date().toISOString().slice(0,10);
   document.getElementById('d_items').innerHTML='';
+  document.getElementById('d_note').value = '';
   if(isEdit){
     const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
     document.getElementById('d_siteId').value=d.siteId;
     document.getElementById('d_date').value=d.date;
+    document.getElementById('d_note').value = d.note || '';
     addDlvItem({ item:d.item||'루버', spec:d.spec, qty:d.qty });
   } else {
     addDlvItem(); // 신규: 빈 항목 1개로 시작
@@ -2542,6 +2558,7 @@ async function saveDelivery() {
   }
   const colCount = Math.max(...Object.values(colMap)) + 1;
   const lastCol = colLetter(colCount-1);
+  const note = document.getElementById('d_note').value.trim();
   const buildRow = it => {
     const row = new Array(colCount).fill('');
     const setByHeader = (names, val) => {
@@ -2557,6 +2574,7 @@ async function saveDelivery() {
     setByHeader(['가로'],                    it.specW);
     setByHeader(['세로'],                    it.specH);
     setByHeader(['개수'],                    it.qty);
+    setByHeader(['비고'],                    note);
     return row;
   };
   const rows = items.map(buildRow);
@@ -3271,6 +3289,19 @@ function renderInvoice() {
         ? '<div class="text-center text-muted py-5">해당 월의 납품 이력이 없습니다.</div>'
         : `
         <div class="mb-4">
+          <h6 class="fw-bold mb-2">🏢 현장별 합계</h6>
+          <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
+            <thead><tr>
+              <th style="width:300px">현장명</th>
+              <th class="text-end" style="width:100px">루버</th>
+              <th class="text-end" style="width:100px">SMA셋</th>
+              <th class="text-end" style="width:100px">BIAS셋</th>
+              ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
+            </tr></thead>
+            <tbody>${summaryRows}</tbody>
+          </table></div>
+        </div>
+        <div class="mb-4">
           <h6 class="fw-bold mb-2">📋 현장별 납품 내역 <span class="badge bg-light text-dark ms-1">${monthDlvs.length}건</span></h6>
           <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
             <thead><tr>
@@ -3282,19 +3313,6 @@ function renderInvoice() {
               ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
             </tr></thead>
             <tbody>${rowHtml}</tbody>
-          </table></div>
-        </div>
-        <div class="mb-4">
-          <h6 class="fw-bold mb-2">🏢 현장별 합계</h6>
-          <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
-            <thead><tr>
-              <th style="width:300px">현장명</th>
-              <th class="text-end" style="width:100px">루버</th>
-              <th class="text-end" style="width:100px">SMA셋</th>
-              <th class="text-end" style="width:100px">BIAS셋</th>
-              ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
-            </tr></thead>
-            <tbody>${summaryRows}</tbody>
           </table></div>
         </div>
         <div class="rounded p-3" style="background:#f0fdf4;border:1px solid #bbf7d0">
