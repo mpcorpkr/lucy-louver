@@ -400,62 +400,27 @@ tbody tr:hover{background:#f8fafc}
       </div>
       <div class="modal-body">
         <div class="row g-3">
-          <!-- 1. 납품일 -->
-          <div class="col-md-6"><label class="form-label">납품일 *</label><input class="form-control" type="date" id="d_date"></div>
-          <!-- 2. 현장명 -->
+          <!-- 공통: 납품일 -->
+          <div class="col-md-6"><label class="form-label">출고일자 *</label><input class="form-control" type="date" id="d_date"></div>
+          <!-- 공통: 현장명 (업체명은 현장에서 자동 추출) -->
           <div class="col-md-6">
             <label class="form-label">현장명 *</label>
             <select class="form-select" id="d_siteId" onchange="onDlvSiteChange()">
               <option value="">현장을 선택하세요</option>
             </select>
           </div>
-          <!-- 3. 규격 선택 -->
-          <div class="col-md-6">
-            <label class="form-label">규격 *</label>
-            <select class="form-select" id="d_spec" onchange="updateDlvTotals()">
-              <option value="">먼저 현장을 선택하세요</option>
-            </select>
-          </div>
-          <!-- 4. 색상 선택 -->
-          <div class="col-md-6">
-            <label class="form-label">색상</label>
-            <select class="form-select" id="d_color">
-              <option value="">먼저 현장을 선택하세요</option>
-            </select>
-          </div>
-          <!-- 5. 납품 개수 -->
-          <div class="col-md-4"><label class="form-label">납품 개수 *</label><input class="form-control" type="number" id="d_qty" min="1"></div>
-          <!-- 6. 차량종류 (자유 입력) -->
-          <div class="col-md-4" id="d_carWrap">
-            <label class="form-label">차량 종류</label>
-            <input class="form-control" id="d_carType" placeholder="예) 5ton차">
-          </div>
-          <!-- 7. 화물비 -->
-          <div class="col-md-4" id="d_costWrap"><label class="form-label">화물비 (원)</label><input class="form-control" type="number" id="d_cost" min="0"></div>
-          <!-- 8. 비고 -->
-          <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="d_note" rows="2"></textarea></div>
-          <!-- 9·10. 자동 계산 (총납품 / 잔여) -->
+          <!-- 납품 항목 리스트 -->
           <div class="col-12">
+            <label class="form-label fw-bold">납품 항목 * <small class="text-muted fw-normal">· 각 항목은 시트 1행으로 저장됩니다</small></label>
+            <div id="d_items"></div>
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addDlvItem()"><i class="bi bi-plus-lg"></i> 납품 항목 추가</button>
+          </div>
+          <!-- 현장 요약 -->
+          <div class="col-12" id="d_siteSummary" style="display:none">
             <div class="rounded p-3" style="background:#f8fafc;border:1px solid #e2e8f0">
-              <div class="row g-3 text-center">
-                <div class="col-6">
-                  <div class="text-muted mb-1" style="font-size:.82rem"><i class="bi bi-box-seam"></i> 총납품개수</div>
-                  <div class="fw-bold text-success" id="d_totalDelivered" style="font-size:1.5rem">-</div>
-                  <small class="text-muted" id="d_totalDeliveredLabel">규격 선택 시 자동 계산</small>
-                </div>
-                <div class="col-6" style="border-left:1px solid #e2e8f0">
-                  <div class="text-muted mb-1" style="font-size:.82rem"><i class="bi bi-hourglass-split"></i> 잔여 납품개수</div>
-                  <div class="fw-bold" id="d_remaining" style="font-size:1.5rem">-</div>
-                  <small class="text-muted" id="d_remainingLabel">계약 - 납품</small>
-                </div>
-              </div>
+              <div class="fw-bold mb-2" style="font-size:.88rem;color:var(--lucy)"><i class="bi bi-info-circle"></i> 현장 납품 현황</div>
+              <div id="d_siteSummaryBody"></div>
             </div>
-          </div>
-          <!-- 재고 사용 내역 -->
-          <div class="col-12">
-            <label class="form-label fw-bold">재고 사용 내역</label>
-            <div id="d_invItems"></div>
-            <button class="btn btn-sm btn-outline-primary mt-2" type="button" onclick="addInvUsageRow()"><i class="bi bi-plus"></i> 항목 추가</button>
           </div>
         </div>
       </div>
@@ -786,18 +751,19 @@ function initGoogleAuth() {
   document.head.appendChild(s);
 }
 
-async function apiRequest(method, range, body) {
+async function apiRequest(method, range, body, cfg) {
   if (!S.googleToken) { document.getElementById('googleConnectBanner').style.display='flex'; return null; }
   const base = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}`;
   const headers = { Authorization:`Bearer ${S.googleToken}`, 'Content-Type':'application/json' };
+  const vio = (cfg && cfg.valueInputOption) || 'USER_ENTERED';
   let url, opts = { method, headers };
   if (method === 'GET') {
     url = `${base}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`;
   } else if (method === 'POST') {
-    url = `${base}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    url = `${base}/values/${encodeURIComponent(range)}:append?valueInputOption=${vio}&insertDataOption=INSERT_ROWS`;
     opts.body = JSON.stringify({ values: body });
   } else if (method === 'PUT') {
-    url = `${base}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+    url = `${base}/values/${encodeURIComponent(range)}?valueInputOption=${vio}`;
     opts.body = JSON.stringify({ values: body });
   } else if (method === 'DELETE') {
     url = `${base}/values/${encodeURIComponent(range)}:clear`;
@@ -811,9 +777,25 @@ async function apiRequest(method, range, body) {
 
 async function loadAll() {
   if (!S.googleToken) return;
-  await Promise.all([loadSites(), loadDeliveries(), loadOrdersDH(), loadOrdersMG(), loadCustomers()]);
+  // 현장을 먼저 로드해야 납품이력이 현장명으로 siteId를 역조회할 수 있음
+  await Promise.all([loadSites(), ensureDlvHeader()]);
+  await Promise.all([loadDeliveries(), loadOrdersDH(), loadOrdersMG(), loadCustomers()]);
   if (document.getElementById('page-'+S.currentPage)?.classList.contains('active')) {
     showPage(S.currentPage);
+  }
+}
+
+// 납품이력 시트 헤더 자동 생성 (A~G 7컬럼)
+async function ensureDlvHeader() {
+  const HDR=['출고일자','업체명','현장명','품목','가로','세로','개수'];
+  const r = await apiRequest('GET', `${SH.DLV}!A1:G1`);
+  const cur = (r && r.values && r.values[0]) ? r.values[0] : [];
+  // A1이 비어있거나 우리가 관리한 헤더('출고일자' 또는 구버전 '납품일')면 → 7칸 동기화
+  if (!cur[0] || cur[0] === '출고일자' || cur[0] === '납품일') {
+    const differs = HDR.some((h,i)=>(cur[i]||'')!==h);
+    if (differs) {
+      await apiRequest('PUT', `${SH.DLV}!A1:G1`, [HDR], {valueInputOption:'RAW'});
+    }
   }
 }
 
@@ -886,12 +868,34 @@ function mkSite(r, i) {
   };
 }
 
-function mkDelivery(r, i) {
+// 납품이력 시트 스키마 (7컬럼):
+// A:출고일자 B:업체명 C:현장명 D:품목 E:가로 F:세로 G:개수
+// 품목: '루버' / 'SMA셋' / 'BIAS셋' ('무전원 자동루버'는 '루버'로 정규화)
+function mkDelivery(r, i, siteByName) {
+  const siteName = String(r[2]||'').trim();
+  const site = siteByName ? siteByName[siteName] : null;
+  const itemRaw = String(r[3]||'').trim();
+  const item = itemRaw === '무전원 자동루버' ? '루버' : (itemRaw || '루버');
+  const specW = String(r[4]||'').trim();
+  const specH = String(r[5]||'').trim();
+  const spec  = (specW || specH) ? `${specW}×${specH}` : '';
+  const qty   = +r[6]||0;
   return {
-    _row:i+2, id:String(r[0]||''), siteId:String(r[1]||''), siteName:String(r[2]||''),
-    date:parseDate(r[3]), spec:String(r[4]||''), color:String(r[5]||''), qty:+r[6]||0,
-    ...(S.perm.canViewDeliveryCost ? { carType:String(r[7]||''), cost:+r[8]||0 } : {}),
-    note:String(r[9]||''), invUsage:String(r[10]||''), createdAt:parseDate(r[11])
+    _row:i+2, id:String(i+2),
+    date:parseDate(r[0]),
+    contractor:String(r[1]||''),
+    siteName,
+    siteId: site ? site.id : '',
+    item, itemRaw,            // 품목 (정규화된 값 / 원본)
+    type: item,                // 하위호환: 루버/SMA셋/BIAS셋
+    specW, specH, spec,        // 규격: "가로×세로" (표시 시 mm 부가)
+    qty,
+    // 집계 보조 필드
+    louverQty:        (item==='루버' || item==='BIAS셋') ? qty : 0,
+    smaSetQty:        item==='SMA셋'  ? qty : 0,
+    biasSetQty:       item==='BIAS셋' ? qty : 0,
+    smaStandaloneQty: 0,       // 신 스키마에서는 사용 안 함
+    color:'', note:''          // 신 스키마에는 없는 필드 (UI 호환용 공란)
   };
 }
 
@@ -926,19 +930,49 @@ function mkCustomer(r, i) {
 
 // =================== LOADERS ===================
 async function loadSites()     { const r=await apiRequest('GET',`${SH.SITE}!A2:AJ`); if(r) S.data.sites=(r.values||[]).filter(row=>row[0]).map(mkSite); }
-async function loadDeliveries(){ const r=await apiRequest('GET',`${SH.DLV}!A2:L`);  if(r) S.data.deliveries=(r.values||[]).filter(row=>row[0]).map(mkDelivery); }
+async function loadDeliveries(){
+  const r=await apiRequest('GET',`${SH.DLV}!A2:G`);
+  if(!r) return;
+  const siteByName={}; S.data.sites.forEach(s=>{ siteByName[s.name]=s; });
+  S.data.deliveries=(r.values||[])
+    .filter(row=>row[0]||row[2]) // 출고일자 또는 현장명
+    .map((row,i)=>mkDelivery(row,i,siteByName));
+}
 async function loadOrdersDH()  { const r=await apiRequest('GET',`${SH.DH}!A2:J`);   if(r) S.data.ordersDH=(r.values||[]).filter(row=>row[0]).map(mkOrderDH); }
 async function loadOrdersMG()  { const r=await apiRequest('GET',`${SH.MG}!A2:Q`);   if(r) S.data.ordersMG=(r.values||[]).filter(row=>row[0]).map(mkOrderMG); }
 async function loadCustomers() { const r=await apiRequest('GET',`${SH.CUST}!A2:G`); if(r) S.data.customers=(r.values||[]).filter(row=>row[0]).map(mkCustomer); }
 
 // =================== COMPUTED ===================
+// 루버 프레임(루버 / BIAS셋)만 계약 진행률에 포함. SMA셋은 마감자재 현황에만 집계.
+const _isLouver = d => {
+  const t = d.item || d.type || '';
+  return t === '루버' || t === 'BIAS셋' || t === '목업' || !t;
+};
 function totalDelivered(siteId) {
-  return S.data.deliveries.filter(d=>d.siteId===siteId).reduce((s,d)=>s+d.qty,0);
+  return S.data.deliveries
+    .filter(d=>d.siteId===siteId && _isLouver(d))
+    .reduce((s,d)=>s+(d.qty||0),0);
 }
 function totalDeliveredBySpec(siteId, specKey) {
-  return S.data.deliveries.filter(d=>d.siteId===siteId && d.spec===specKey).reduce((s,d)=>s+d.qty,0);
+  return S.data.deliveries
+    .filter(d=>d.siteId===siteId && d.spec===specKey && _isLouver(d))
+    .reduce((s,d)=>s+(d.qty||0),0);
 }
 function remaining(site) { return site.qty - totalDelivered(site.id); }
+// 마감자재 집계: SMA셋 / BIAS셋 합계 + SMA 필요(=BIAS셋) / 완료(=SMA셋) / 잔여
+function finishTotals(siteId) {
+  const dlvs = S.data.deliveries.filter(d=>d.siteId===siteId);
+  const smaSet  = dlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
+  const biasSet = dlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
+  const count   = dlvs.filter(d=>d.item==='SMA셋' || d.item==='BIAS셋').length;
+  return {
+    count,
+    smaSet, biasSet, smaStandalone:0,
+    smaRequired: biasSet,
+    smaDelivered: smaSet,
+    smaRemaining: biasSet - smaSet
+  };
+}
 
 function calcInventory() {
   const inv = {};
@@ -1428,8 +1462,12 @@ function openSiteDetail(id) {
   const pct=s.qty>0?Math.min(100,Math.round(dlvd/s.qty*100)):0;
   const done=pct>=100;
   const colors = Array.isArray(s.colors)?s.colors.join(', '):(s.colors||'-');
-  // 납품 이력 (오래된 날짜순 정렬, 누적합계 계산)
-  const siteDlvs=[...S.data.deliveries].filter(d=>d.siteId===id)
+  // 마감자재 누적
+  const ft = finishTotals(id);
+  const hasFinish = ft.count > 0;
+  // 납품 이력: 루버/목업만 (계약 대비 누적합계 계산용)
+  const siteDlvs=[...S.data.deliveries]
+    .filter(d=>d.siteId===id && _isLouver(d))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||'').localeCompare(b.createdAt||''));
   let cum=0;
   const dlvRows=siteDlvs.map(d=>{
@@ -1508,6 +1546,51 @@ function openSiteDetail(id) {
               </table>
             </div>`}
       </div>
+      ${hasFinish?`
+      <div class="col-12"><hr>
+        <div class="fw-bold mb-2" style="color:var(--lucy)"><i class="bi bi-gear"></i> 마감자재 납품 현황 <span class="badge bg-light text-dark ms-1">${ft.count}건</span></div>
+        <div class="row g-2 mb-2">
+          <div class="col-md-4">
+            <div class="p-2 rounded text-center" style="background:#f0f9ff;border:1px solid #bae6fd">
+              <div class="text-muted" style="font-size:.78rem">SMA셋</div>
+              <div class="fw-bold text-primary" style="font-size:1.25rem">${ft.smaSet.toLocaleString()} <small class="text-muted">세트</small></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="p-2 rounded text-center" style="background:#fef3c7;border:1px solid #fde68a">
+              <div class="text-muted" style="font-size:.78rem">BIAS셋</div>
+              <div class="fw-bold" style="font-size:1.25rem;color:#b45309">${ft.biasSet.toLocaleString()} <small class="text-muted">세트</small></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="p-2 rounded text-center" style="background:#e0e7ff;border:1px solid #c7d2fe">
+              <div class="text-muted" style="font-size:.78rem">SMA 단독 납품</div>
+              <div class="fw-bold" style="font-size:1.25rem;color:#4338ca">${ft.smaStandalone.toLocaleString()} <small class="text-muted">개</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive" style="border:1px solid #e2e8f0;border-radius:8px">
+          <table class="table table-sm mb-0" style="font-size:.85rem">
+            <thead style="background:#f8fafc">
+              <tr>
+                <th class="text-center">SMA 필요 수량</th>
+                <th class="text-center">SMA 완료 수량</th>
+                <th class="text-center">SMA 잔여 수량</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-center fw-bold">${ft.smaRequired.toLocaleString()} 개 <small class="text-muted">(BIAS셋 누적)</small></td>
+                <td class="text-center fw-bold text-success">${ft.smaDelivered.toLocaleString()} 개 <small class="text-muted">(SMA셋 누적)</small></td>
+                <td class="text-center fw-bold ${ft.smaRemaining<=0?'text-success':'text-danger'}" style="font-size:.95rem">
+                  ${ft.smaRemaining.toLocaleString()} 개
+                  ${ft.smaRemaining<=0?'<span class="badge bg-success ms-1" style="font-size:.7rem">완료 ✓</span>':'<span class="badge bg-danger ms-1" style="font-size:.7rem">납품 필요</span>'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`:''}
       <div class="col-6"><b>색상코드</b><div class="mt-1">${colors}</div></div>
       <div class="col-3"><b>포장</b><div class="mt-1">${s.packing}</div></div>
       <div class="col-3"><b>시공</b><div class="mt-1">${s.install}</div></div>
@@ -1715,19 +1798,27 @@ function renderDeliveryList() {
     .sort((a,b)=>b.date.localeCompare(a.date));
   const tbody=document.getElementById('dlvTbody');
   if(!list.length){tbody.innerHTML='<tr><td colspan="8" class="text-center py-4 text-muted">납품 이력 없음</td></tr>';return;}
-  tbody.innerHTML=list.map(d=>`<tr>
-    <td>${d.date}</td>
-    <td class="fw-bold">${d.siteName}</td>
-    <td>${d.spec||'-'}</td>
-    <td>${d.color||'-'}</td>
-    <td class="text-center">${d.qty}</td>
-    ${S.perm.canViewDeliveryCost?`<td>${d.carType||'-'} / ${(d.cost||0).toLocaleString()}원</td>`:''}
-    <td>${d.note||'-'}</td>
-    <td>
-      ${(S.perm.canEditDelivery||S.perm.canEditSite)?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDlvModal('${d.id}')"><i class="bi bi-pencil"></i></button>`:''}
-      ${S.perm.canDeleteDelivery?`<button class="btn btn-sm btn-outline-danger" onclick="deleteDlv('${d.id}')"><i class="bi bi-trash"></i></button>`:''}
-    </td>
-  </tr>`).join('');
+  tbody.innerHTML=list.map(d=>{
+    const item = d.item||d.type||'루버';
+    const bg = item==='SMA셋' ? 'bg-success'
+             : item==='BIAS셋' ? 'bg-warning text-dark'
+             : 'bg-primary';
+    const typeBadge = `<span class="badge ${bg} me-1" style="font-size:.7rem">${item}</span>`;
+    const specCell = d.spec ? `${d.spec}mm` : '-';
+    return `<tr>
+      <td>${d.date}</td>
+      <td class="fw-bold">${typeBadge}${d.siteName}</td>
+      <td>${specCell}</td>
+      <td>-</td>
+      <td class="text-center">${d.qty||0}</td>
+      ${S.perm.canViewDeliveryCost?`<td>-</td>`:''}
+      <td>-</td>
+      <td>
+        ${(S.perm.canEditDelivery||S.perm.canEditSite)?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDlvModal('${d.id}')"><i class="bi bi-pencil"></i></button>`:''}
+        ${S.perm.canDeleteDelivery?`<button class="btn btn-sm btn-outline-danger" onclick="deleteDlv('${d.id}')"><i class="bi bi-trash"></i></button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function openDlvModal(id) {
@@ -1737,167 +1828,187 @@ function openDlvModal(id) {
   const sel=document.getElementById('d_siteId');
   sel.innerHTML='<option value="">현장을 선택하세요</option>';
   S.data.sites.forEach(s=>{ sel.innerHTML+=`<option value="${s.id}">${s.name}</option>`; });
-  ['d_note','d_carType'].forEach(f=>document.getElementById(f).value='');
-  ['d_qty','d_cost'].forEach(f=>document.getElementById(f).value='');
   document.getElementById('d_date').value=new Date().toISOString().slice(0,10);
-  document.getElementById('d_invItems').innerHTML='';
-  // 규격·색상 드롭다운 초기화 (현장 선택 전)
-  document.getElementById('d_spec').innerHTML='<option value="">먼저 현장을 선택하세요</option>';
-  document.getElementById('d_color').innerHTML='<option value="">먼저 현장을 선택하세요</option>';
-  const canCost=S.perm.canEditDeliveryCost;
-  document.getElementById('d_carWrap').style.display=canCost?'':'none';
-  document.getElementById('d_costWrap').style.display=canCost?'':'none';
+  document.getElementById('d_items').innerHTML='';
   if(isEdit){
     const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
     document.getElementById('d_siteId').value=d.siteId;
     document.getElementById('d_date').value=d.date;
-    document.getElementById('d_qty').value=d.qty;
-    if(canCost){document.getElementById('d_carType').value=d.carType||'';document.getElementById('d_cost').value=d.cost||'';}
-    document.getElementById('d_note').value=d.note;
-    safeJSON(d.invUsage,[]).forEach(u=>addInvUsageRow(u));
-    onDlvSiteChange(d.spec, d.color); // 규격·색상 드롭다운 채우고 현재 값 복원 + 총/잔여 계산
+    addDlvItem({ item:d.item||'루버', spec:d.spec, qty:d.qty });
   } else {
-    updateDlvTotals(); // 초기 표시 리셋
+    addDlvItem(); // 신규: 빈 항목 1개로 시작
   }
+  updateDlvSiteSummary();
   new bootstrap.Modal(document.getElementById('dlvModal')).show();
 }
 
-function addInvUsageRow(data) {
+// === 납품 항목 관리 ===
+function addDlvItem(data) {
+  const wrap=document.getElementById('d_items');
+  const idx=wrap.children.length+1;
   const div=document.createElement('div');
-  div.className='d-flex gap-2 mb-2 align-items-center inv-usage-row';
+  div.className='dlv-item rounded p-2 mb-2';
+  div.style.background='#f8fafc';
+  div.style.border='1px solid #e2e8f0';
   div.innerHTML=`
-    <select class="form-select form-select-sm" style="flex:2">
-      <option value="">품목</option>${ITEMS.map(i=>`<option ${data&&data.품목===i?'selected':''}>${i}</option>`).join('')}
-    </select>
-    <input class="form-control form-control-sm" style="flex:1" placeholder="색상" value="${data?data.색상||'':''}">
-    <input class="form-control form-control-sm" style="flex:1" placeholder="규격" value="${data?data.규격||'':''}">
-    <input class="form-control form-control-sm" style="flex:1;max-width:80px" placeholder="수량" type="number" min="0" value="${data?data.수량||'':''}">
-    <button class="btn btn-sm btn-outline-danger" type="button" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>`;
-  document.getElementById('d_invItems').appendChild(div);
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <span class="badge bg-primary item-label" style="font-size:.75rem;padding:5px 8px">항목 ${idx}</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeDlvItem(this)"><i class="bi bi-trash"></i></button>
+    </div>
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label mb-1" style="font-size:.82rem">품목 *</label>
+        <select class="form-select form-select-sm item-type">
+          <option value="루버">루버</option>
+          <option value="SMA셋">SMA셋</option>
+          <option value="BIAS셋">BIAS셋</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label mb-1" style="font-size:.82rem">규격 (가로×세로mm)</label>
+        <select class="form-select form-select-sm item-spec">
+          <option value="">먼저 현장 선택</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label mb-1" style="font-size:.82rem">개수 *</label>
+        <input type="number" class="form-control form-control-sm item-qty" min="1">
+      </div>
+    </div>`;
+  wrap.appendChild(div);
+  populateItemSelects(div);
+  if(data){
+    div.querySelector('.item-type').value = data.item || '루버';
+    if(data.spec) div.querySelector('.item-spec').value = data.spec;
+    div.querySelector('.item-qty').value = data.qty || '';
+  }
 }
 
-function onDlvSiteChange(preserveSpec, preserveColor) {
+function removeDlvItem(btn) {
+  const wrap=document.getElementById('d_items');
+  if(wrap.children.length<=1){toast('납품 항목은 최소 1개 이상 필요합니다','warning');return;}
+  btn.closest('.dlv-item').remove();
+  // 라벨 번호 재정렬
+  [...wrap.children].forEach((el,i)=>{
+    const lb=el.querySelector('.item-label'); if(lb) lb.textContent=`항목 ${i+1}`;
+  });
+}
+
+// 항목의 규격 select를 현재 선택된 현장 데이터로 채움 (색상은 신 스키마에 없음)
+function populateItemSelects(itemDiv) {
   const sid=document.getElementById('d_siteId').value;
   const site=S.data.sites.find(s=>s.id===sid);
-  const specSel=document.getElementById('d_spec');
-  const colorSel=document.getElementById('d_color');
-  const curSpec = preserveSpec !== undefined ? preserveSpec : specSel.value;
-  const curColor = preserveColor !== undefined ? preserveColor : colorSel.value;
+  const specSel=itemDiv.querySelector('.item-spec');
+  const curSpec=specSel.value;
   if(!site){
-    specSel.innerHTML='<option value="">먼저 현장을 선택하세요</option>';
-    colorSel.innerHTML='<option value="">먼저 현장을 선택하세요</option>';
-    updateDlvTotals();
+    specSel.innerHTML='<option value="">먼저 현장 선택</option>';
     return;
   }
-  // 규격 드롭다운: "가로×세로mm" 형식
-  const specOpts = site.specs || [];
-  specSel.innerHTML = specOpts.length
-    ? '<option value="">규격을 선택하세요</option>'
-    : '<option value="">등록된 규격이 없습니다</option>';
-  specOpts.forEach(sp=>{
+  const specs=site.specs||[];
+  specSel.innerHTML = specs.length ? '<option value="">규격 선택</option>' : '<option value="">등록 규격 없음</option>';
+  specs.forEach(sp=>{
     const key=`${sp.width}×${sp.height}`;
     specSel.innerHTML+=`<option value="${key}">${key}mm</option>`;
   });
   if(curSpec && ![...specSel.options].some(o=>o.value===curSpec)){
-    specSel.innerHTML+=`<option value="${curSpec}">${curSpec} (이전 규격)</option>`;
+    specSel.innerHTML+=`<option value="${curSpec}">${curSpec} (이전)</option>`;
   }
-  // 규격 1개면 자동 선택
-  if(!curSpec && specOpts.length===1) specSel.value = `${specOpts[0].width}×${specOpts[0].height}`;
+  if(!curSpec && specs.length===1) specSel.value = `${specs[0].width}×${specs[0].height}`;
   else specSel.value = curSpec || '';
-
-  // 색상 드롭다운: 색상코드 그대로
-  const colors = Array.isArray(site.colors) ? site.colors.filter(Boolean) : [];
-  colorSel.innerHTML = colors.length
-    ? '<option value="">색상을 선택하세요</option>'
-    : '<option value="">등록된 색상이 없습니다</option>';
-  colors.forEach(c=>{ colorSel.innerHTML+=`<option value="${c}">${c}</option>`; });
-  if(curColor && !colors.includes(curColor)){
-    colorSel.innerHTML+=`<option value="${curColor}">${curColor} (이전 색상)</option>`;
-  }
-  // 색상 1개면 자동 선택
-  if(!curColor && colors.length===1) colorSel.value = colors[0];
-  else colorSel.value = curColor || '';
-
-  updateDlvTotals();
 }
 
-function updateDlvTotals() {
+// 현장 변경 시: 모든 항목의 규격/색상 select 재채움 + 요약 갱신
+function onDlvSiteChange() {
+  document.querySelectorAll('#d_items .dlv-item').forEach(it=>populateItemSelects(it));
+  updateDlvSiteSummary();
+}
+
+// 하단 요약: 현장 전체 루버 진행 + 마감자재 SMA 잔여
+function updateDlvSiteSummary() {
   const sid=document.getElementById('d_siteId').value;
-  const spec=document.getElementById('d_spec').value;
   const site=S.data.sites.find(s=>s.id===sid);
-  const totalEl=document.getElementById('d_totalDelivered');
-  const remainEl=document.getElementById('d_remaining');
-  const totalLabel=document.getElementById('d_totalDeliveredLabel');
-  const remainLabel=document.getElementById('d_remainingLabel');
-  if(!site){
-    totalEl.textContent='-'; remainEl.textContent='-';
-    totalLabel.textContent='현장 선택 시 자동 계산';
-    remainLabel.textContent='계약 - 납품';
-    remainEl.className='fw-bold';
-    return;
-  }
-  let contractQty, delivered, label;
-  if(spec){
-    const sp=(site.specs||[]).find(x=>`${x.width}×${x.height}`===spec);
-    contractQty = sp ? sp.qty : 0;
-    delivered = totalDeliveredBySpec(sid, spec);
-    label = `규격 ${spec}mm 기준`;
-  } else {
-    contractQty = site.qty;
-    delivered = totalDelivered(sid);
-    label = '현장 전체 기준';
-  }
-  const rem = contractQty - delivered;
-  totalEl.textContent = `${delivered.toLocaleString()} 개`;
-  remainEl.textContent = `${rem.toLocaleString()} 개`;
-  totalLabel.textContent = label;
-  remainLabel.textContent = `계약 ${contractQty.toLocaleString()} − 납품 ${delivered.toLocaleString()}`;
-  remainEl.className = `fw-bold ${rem<=0?'text-primary':rem<=10?'text-warning':'text-danger'}`;
+  const wrap=document.getElementById('d_siteSummary');
+  const body=document.getElementById('d_siteSummaryBody');
+  if(!site){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  const dlvd=totalDelivered(sid), rem=remaining(site);
+  const pct=site.qty>0?Math.min(100,Math.round(dlvd/site.qty*100)):0;
+  const ft=finishTotals(sid);
+  body.innerHTML=`
+    <div class="row g-2" style="font-size:.85rem">
+      <div class="col-md-4">
+        <div class="text-muted" style="font-size:.78rem">루버 총납품 / 계약</div>
+        <div class="fw-bold">
+          <span class="text-success">${dlvd.toLocaleString()}</span> / ${site.qty.toLocaleString()} 개
+          <span class="ms-1 ${pct>=100?'text-primary':'text-success'}">(${pct}%)</span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted" style="font-size:.78rem">루버 잔여</div>
+        <div class="fw-bold ${rem<=0?'text-primary':rem<=10?'text-warning':'text-danger'}">${rem.toLocaleString()} 개</div>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted" style="font-size:.78rem">SMA 잔여 (필요 ${ft.smaRequired} − 완료 ${ft.smaDelivered})</div>
+        <div class="fw-bold ${ft.smaRemaining<=0?'text-success':'text-danger'}">${ft.smaRemaining.toLocaleString()} 개</div>
+      </div>
+    </div>`;
 }
 
 async function saveDelivery() {
   const siteId=document.getElementById('d_siteId').value;
   const date=document.getElementById('d_date').value;
-  const spec=document.getElementById('d_spec').value;
-  const qty=+document.getElementById('d_qty').value||0;
   const site=S.data.sites.find(s=>s.id===siteId);
   if(!site){toast('현장을 선택하세요','error');return;}
-  if(!spec){toast('규격을 선택하세요','error');return;}
-  if(!date){toast('납품일을 입력하세요','error');return;}
-  if(!qty){toast('납품 개수를 입력하세요','error');return;}
-  const invRows=[];
-  document.querySelectorAll('.inv-usage-row').forEach(div=>{
-    const els=div.querySelectorAll('select,input[type="text"],input:not([type="number"]),input[type="number"]');
-    const 품목=els[0].value, 색상=els[1].value.trim(), 규격=els[2].value.trim(), 수량=+els[3].value||0;
-    if(품목&&수량>0) invRows.push({품목,색상,규격,수량});
-  });
-  const canCost=S.perm.canEditDeliveryCost;
-  const row=[
-    S.editingIds.dlv||genId(), siteId, site.name, date,
-    spec,
-    document.getElementById('d_color').value.trim(),
-    qty,
-    canCost?document.getElementById('d_carType').value:'',
-    canCost?(+document.getElementById('d_cost').value||0):0,
-    document.getElementById('d_note').value.trim(),
-    invRows.length>0?JSON.stringify(invRows):'',
-    new Date().toISOString().slice(0,10)
-  ];
+  if(!date){toast('출고일자를 입력하세요','error');return;}
+
+  // 항목별 검증
+  const itemDivs = document.querySelectorAll('#d_items .dlv-item');
+  if(!itemDivs.length){toast('납품 항목을 최소 1개 입력하세요','error');return;}
+  const items=[];
+  for(let i=0;i<itemDivs.length;i++){
+    const div=itemDivs[i];
+    const item=div.querySelector('.item-type').value;
+    const spec=div.querySelector('.item-spec').value||'';
+    const qty =+div.querySelector('.item-qty').value||0;
+    if(!item){toast(`항목 ${i+1}: 품목을 선택하세요`,'error');return;}
+    if(qty<=0){toast(`항목 ${i+1}: 개수를 입력하세요`,'error');return;}
+    // 루버/BIAS셋은 규격 필수, SMA셋은 선택
+    if((item==='루버'||item==='BIAS셋') && !spec){
+      toast(`항목 ${i+1}: 규격을 선택하세요`,'error');return;
+    }
+    const [specW='', specH=''] = spec ? spec.split('×') : [];
+    items.push({item, specW, specH, qty});
+  }
+
+  // A:출고일자 B:업체명 C:현장명 D:품목 E:가로 F:세로 G:개수
+  const rows = items.map(it => [
+    date,                 // A
+    site.contractor||'',  // B
+    site.name,            // C
+    it.item,              // D
+    it.specW,             // E
+    it.specH,             // F
+    it.qty                // G
+  ]);
+
+  const cfg={valueInputOption:'RAW'};
   if(S.editingIds.dlv){
+    // 수정: 기존 row는 첫 항목으로 갱신, 나머지 항목은 신규 append
     const d=S.data.deliveries.find(x=>x.id===S.editingIds.dlv);
-    if(d) await apiRequest('PUT',`${SH.DLV}!A${d._row}:L${d._row}`,[row]);
+    if(d) await apiRequest('PUT',`${SH.DLV}!A${d._row}:G${d._row}`,[rows[0]],cfg);
+    if(rows.length>1) await apiRequest('POST',`${SH.DLV}!A:G`,rows.slice(1),cfg);
   } else {
-    await apiRequest('POST',`${SH.DLV}!A:L`,[row]);
+    await apiRequest('POST',`${SH.DLV}!A:G`,rows,cfg);
   }
   bootstrap.Modal.getInstance(document.getElementById('dlvModal'))?.hide();
-  toast(S.editingIds.dlv?'납품이 수정되었습니다':'납품이 등록되었습니다','success');
+  toast(`${rows.length}건의 납품이 저장되었습니다`,'success');
   await loadDeliveries(); renderDeliveryList();
 }
 
 async function deleteDlv(id) {
   if(!confirm('납품 이력을 삭제하시겠습니까?')) return;
   const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
-  await apiRequest('PUT',`${SH.DLV}!A${d._row}:L${d._row}`,[Array(12).fill('')]);
+  await apiRequest('PUT',`${SH.DLV}!A${d._row}:G${d._row}`,[Array(7).fill('')]);
   toast('납품 이력이 삭제되었습니다','success');
   await loadDeliveries(); renderDeliveryList();
 }
