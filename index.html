@@ -62,7 +62,10 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table thead tr:first-child > th{top:0;height:34px}
 .schedule-table thead tr:first-child > th[rowspan="2"]{height:64px}
 .schedule-table thead tr:nth-child(2) > th{top:34px;height:30px}
-.schedule-table tfoot th{position:sticky;bottom:0;background:#f1f5f9;font-weight:700;z-index:3}
+/* 월별 합계 행 (thead 3행) — 헤더 바로 아래 고정, 연한 노란색 강조 */
+.schedule-table thead tr.sch-totals-row > th{top:64px;height:32px;background:#fef3c7;color:#475569;font-weight:700;z-index:4}
+.schedule-table thead tr.sch-totals-row > th.col-frozen{z-index:7;background:#fde68a}
+.schedule-table thead tr.sch-totals-row > th.cur-month{background:#fbbf24 !important;color:#7c2d12}
 .schedule-table .col-frozen{position:sticky;background:#fff;z-index:2}
 .schedule-table thead .col-frozen{background:#f8fafc;z-index:6}
 .schedule-table tfoot .col-frozen{background:#f1f5f9;z-index:5}
@@ -3067,6 +3070,21 @@ function renderSchedule() {
     html += `<th class="sortable${curCls}" onclick="setSchSort('${x.key}')">${x.m}월<span class="sch-arrow">${arrow(x.key)}</span></th>`;
   });
   html += '</tr>';
+  // 3행: 월별 합계 (헤더 바로 아래 고정)
+  const grandTotal = dlvs.filter(_isLouver).reduce((s,d)=>s+(d.qty||0),0);
+  html += '<tr class="sch-totals-row">';
+  html += '<th class="col-frozen c1" style="text-align:right">월별 합계</th>';
+  html += '<th class="col-frozen c2"></th>';
+  html += '<th class="col-frozen c3"></th>';
+  html += `<th class="col-frozen c4">${grandTotal.toLocaleString()}</th>`;
+  months.forEach(x=>{
+    let sum = 0;
+    for (const [, m] of siteMonthMap) sum += (m[x.key]||0);
+    const isCur = x.key === todayKey;
+    const curCls = isCur ? ' cur-month' : '';
+    html += `<th class="${curCls.trim()}">${sum ? sum.toLocaleString() : ''}</th>`;
+  });
+  html += '</tr>';
   html += '</thead>';
 
   html += '<tbody>';
@@ -3099,22 +3117,6 @@ function renderSchedule() {
     html += '</tr>';
   });
   html += '</tbody>';
-
-  // 월별 합계 + 전체 합계
-  html += '<tfoot><tr>';
-  html += '<th class="col-frozen c1" style="text-align:right">월별 합계</th>';
-  html += '<th class="col-frozen c2"></th>';
-  html += '<th class="col-frozen c3"></th>';
-  const grandTotal = dlvs.filter(_isLouver).reduce((s,d)=>s+(d.qty||0),0);
-  html += `<th class="col-frozen c4">${grandTotal.toLocaleString()}</th>`;
-  months.forEach(x=>{
-    let sum = 0;
-    for (const [, m] of siteMonthMap) sum += (m[x.key]||0);
-    const isCur = x.key === todayKey;
-    const curCls = isCur ? ' cur-month' : '';
-    html += `<th class="${curCls.trim()}">${sum ? sum.toLocaleString() : ''}</th>`;
-  });
-  html += '</tr></tfoot>';
 
   document.getElementById('schTable').innerHTML = html;
 
