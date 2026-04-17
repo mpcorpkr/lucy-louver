@@ -7,6 +7,7 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 :root{--lucy:#2563eb;--lucy-dark:#1e40af;--lucy-light:#dbeafe;--sidebar-w:220px}
 *{box-sizing:border-box}
@@ -167,10 +168,16 @@ tbody tr:hover{background:#f8fafc}
       <div class="card"><div class="card-body p-0">
         <div class="table-responsive"><table class="table table-hover mb-0">
           <thead><tr>
-            <th>현장명</th><th>시공사</th><th>루버타입</th><th>계약수량</th>
-            <th>납품완료</th><th>잔여</th>
-            <th id="th-unitPrice" style="display:none">단가</th>
-            <th>준공일</th><th style="min-width:140px">납품율</th><th>관리</th>
+            <th class="sortable" onclick="setSiteSort('name')">현장명<span class="sort-arrow" data-col="name"></span></th>
+            <th class="sortable" onclick="setSiteSort('contractor')">시공사<span class="sort-arrow" data-col="contractor"></span></th>
+            <th class="sortable" onclick="setSiteSort('louverType')">루버타입<span class="sort-arrow" data-col="louverType"></span></th>
+            <th class="sortable" onclick="setSiteSort('qty')">계약수량<span class="sort-arrow" data-col="qty"></span></th>
+            <th class="sortable" onclick="setSiteSort('dlvd')">납품완료<span class="sort-arrow" data-col="dlvd"></span></th>
+            <th class="sortable" onclick="setSiteSort('rem')">잔여<span class="sort-arrow" data-col="rem"></span></th>
+            <th id="th-unitPrice" class="sortable" onclick="setSiteSort('unitPrice')" style="display:none">단가<span class="sort-arrow" data-col="unitPrice"></span></th>
+            <th class="sortable" onclick="setSiteSort('compDate')">준공일<span class="sort-arrow" data-col="compDate"></span></th>
+            <th class="sortable" onclick="setSiteSort('pct')" style="min-width:140px">납품율<span class="sort-arrow" data-col="pct"></span></th>
+            <th>관리</th>
           </tr></thead>
           <tbody id="siteTbody"></tbody>
         </table></div>
@@ -589,6 +596,7 @@ const S = {
   editingIds:{ site:null, dlv:null, dh:null, mg:null, cust:null },
   data:{ sites:[], deliveries:[], ordersDH:[], ordersMG:[], customers:[], dlvColMap:{} },
   dlvSort:{ col:'date', dir:'desc' }, // 기본: 납품일 최신순
+  siteSort:{ col:'name', dir:'asc' },  // 기본: 현장명 가나다순
   charts:{}
 };
 let selectedUser = null;
@@ -1083,8 +1091,9 @@ function renderDash강철() {
     <div class="row g-3 mb-3">
       <div class="col-lg-8">
         <div class="widget">
-          <div class="widget-title">현장별 납품 진행률</div>
+          <div class="widget-title">현장별 납품 진행률 <small class="text-muted fw-normal">· 잔여 많은 순</small></div>
           <canvas id="dashSiteChart" height="130"></canvas>
+          <div id="dashSiteTotals" class="mt-2 pt-2 d-flex justify-content-around flex-wrap gap-2" style="border-top:1px solid #e2e8f0;font-size:.85rem"></div>
         </div>
       </div>
       <div class="col-lg-4 d-flex flex-column gap-3">
@@ -1120,19 +1129,57 @@ function renderDash강철() {
         }).join('')}
     </div>`;
 
-  // 현장별 진행률 누적 막대 차트
+  // 현장별 진행률 누적 막대 차트 (잔여 내림차순, 상위 14개)
   const ctx=document.getElementById('dashSiteChart');
+  const totalsEl=document.getElementById('dashSiteTotals');
   if(ctx&&sites.length>0){
-    const cs=sites.filter(s=>s.qty>0).slice(0,14);
-    const labels=cs.map(s=>s.name.length>8?s.name.slice(0,8)+'…':s.name);
-    S.charts.dashSite=new Chart(ctx,{
+    const allRows = sites.filter(s=>s.qty>0).map(s=>{
+      const dlvd = totalDelivered(s.id);
+      return { s, qty:s.qty, dlvd, rem:Math.max(0, s.qty-dlvd) };
+    }).sort((a,b)=>b.rem-a.rem);
+    const cs = allRows.slice(0,14);
+    const labels = cs.map(r=>r.s.name.length>8 ? r.s.name.slice(0,8)+'…' : r.s.name);
+
+    S.charts.dashSite = new Chart(ctx,{
       type:'bar',
-      data:{labels,datasets:[
-        {label:'납품완료',data:cs.map(s=>totalDelivered(s.id)),backgroundColor:'rgba(16,185,129,.85)',borderRadius:4},
-        {label:'잔여',data:cs.map(s=>Math.max(0,remaining(s))),backgroundColor:'rgba(239,68,68,.55)',borderRadius:4},
+      data:{labels, datasets:[
+        {label:'납품완료', data:cs.map(r=>r.dlvd), backgroundColor:'rgba(16,185,129,.85)', borderRadius:4,
+          datalabels:{display:false}},
+        {label:'잔여',    data:cs.map(r=>r.rem),  backgroundColor:'rgba(239,68,68,.55)', borderRadius:4,
+          datalabels:{
+            anchor:'end', align:'top', offset:4, clamp:true,
+            color:'#1e293b', font:{size:10, weight:'600'}, textAlign:'center',
+            formatter:(_v, ctxArg)=>{
+              const r = cs[ctxArg.dataIndex];
+              return [
+                `총 ${r.qty.toLocaleString()}개`,
+                `납품 ${r.dlvd.toLocaleString()}개`,
+                `잔여 ${r.rem.toLocaleString()}개`
+              ];
+            }
+          }
+        },
       ]},
-      options:{plugins:{legend:{position:'top'}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}
+      options:{
+        layout:{padding:{top:52}},
+        plugins:{legend:{position:'top'}, datalabels:{display:true}},
+        scales:{x:{stacked:true}, y:{stacked:true, beginAtZero:true}}
+      },
+      plugins: (typeof ChartDataLabels!=='undefined') ? [ChartDataLabels] : []
     });
+
+    // 전체 합계 (화면 표시는 상위 14개뿐이어도, 합계는 모든 현장 기준)
+    const tQty  = allRows.reduce((s,r)=>s+r.qty,0);
+    const tDlvd = allRows.reduce((s,r)=>s+r.dlvd,0);
+    const tRem  = allRows.reduce((s,r)=>s+r.rem,0);
+    if (totalsEl) {
+      totalsEl.innerHTML =
+        `<div>전체 계약: <span class="fw-bold text-primary">${tQty.toLocaleString()}개</span></div>` +
+        `<div>전체 납품: <span class="fw-bold text-success">${tDlvd.toLocaleString()}개</span></div>` +
+        `<div>전체 잔여: <span class="fw-bold ${tRem>0?'text-danger':'text-success'}">${tRem.toLocaleString()}개</span></div>`;
+    }
+  } else if (totalsEl) {
+    totalsEl.innerHTML = '<small class="text-muted">현장 없음</small>';
   }
 }
 
@@ -1448,16 +1495,60 @@ function statCard(label,val,icon,bg){
 }
 
 // =================== SITE ===================
+function setSiteSort(col) {
+  if (!S.siteSort) S.siteSort = { col:'name', dir:'asc' };
+  if (S.siteSort.col === col) {
+    S.siteSort.dir = S.siteSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    S.siteSort.col = col;
+    // 문자열 컬럼은 가나다순(asc) 기본, 숫자/날짜는 컬럼별 자연스러운 기본값
+    S.siteSort.dir = (col==='compDate') ? 'desc' : 'asc';
+  }
+  renderSiteList();
+}
+
+function _siteSortVal(row, col) {
+  const s = row.s;
+  if (col==='name')       return s.name || '';
+  if (col==='contractor') return s.contractor || '';
+  if (col==='louverType') return s.louverType || '';
+  if (col==='qty')        return +s.qty || 0;
+  if (col==='dlvd')       return row.dlvd;
+  if (col==='rem')        return row.rem;
+  if (col==='unitPrice')  return +s.unitPrice || 0;
+  if (col==='compDate')   return s.compDate || '';
+  if (col==='pct')        return row.pct;
+  return '';
+}
+
 function renderSiteList() {
   const q = (document.getElementById('siteSearch')?.value||'').toLowerCase();
   document.getElementById('th-unitPrice').style.display = S.perm.canPrice?'':'none';
-  const list = S.data.sites.filter(s=>!q||s.name.toLowerCase().includes(q)||s.contractor.toLowerCase().includes(q));
+  const filtered = S.data.sites.filter(s=>!q||s.name.toLowerCase().includes(q)||s.contractor.toLowerCase().includes(q));
+  // 파생값 precompute (정렬 시 같은 값 반복 계산 방지)
+  const rows = filtered.map(s=>{
+    const dlvd = totalDelivered(s.id);
+    const rem  = (s.qty||0) - dlvd;
+    const pct  = s.qty>0 ? Math.min(100, Math.round(dlvd/s.qty*100)) : 0;
+    return { s, dlvd, rem, pct };
+  });
+  // 정렬
+  const sort = S.siteSort || {col:'name', dir:'asc'};
+  const mult = sort.dir==='asc' ? 1 : -1;
+  rows.sort((a,b)=>{
+    const va=_siteSortVal(a,sort.col), vb=_siteSortVal(b,sort.col);
+    if (typeof va==='number' && typeof vb==='number') return (va-vb)*mult;
+    return String(va).localeCompare(String(vb),'ko')*mult;
+  });
+  // 헤더 화살표 업데이트 (#page-site 범위로 스코프 분리)
+  document.querySelectorAll('#page-site .sort-arrow').forEach(el=>{
+    el.textContent = (el.dataset.col===sort.col) ? (sort.dir==='asc'?' ▲':' ▼') : '';
+  });
+
   const tbody = document.getElementById('siteTbody');
-  if (!list.length) { tbody.innerHTML='<tr><td colspan="10" class="text-center py-4 text-muted">현장이 없습니다</td></tr>'; return; }
-  tbody.innerHTML = list.map(s=>{
-    const dlvd=totalDelivered(s.id), rem=remaining(s);
-    const pct=s.qty>0?Math.min(100,Math.round(dlvd/s.qty*100)):0;
-    const done=pct>=100;
+  if (!rows.length) { tbody.innerHTML='<tr><td colspan="10" class="text-center py-4 text-muted">현장이 없습니다</td></tr>'; return; }
+  tbody.innerHTML = rows.map(({s, dlvd, rem, pct})=>{
+    const done = pct>=100;
     return `<tr style="cursor:pointer" onclick="openSiteDetail('${s.id}')">
       <td><span class="fw-bold">${s.name}</span></td>
       <td>${s.contractor||'-'}</td>
@@ -1853,8 +1944,8 @@ function renderDeliveryList() {
       if (typeof va==='number' && typeof vb==='number') return (va-vb)*mult;
       return String(va).localeCompare(String(vb),'ko')*mult;
     });
-  // 헤더 화살표 업데이트
-  document.querySelectorAll('.sort-arrow').forEach(el=>{
+  // 헤더 화살표 업데이트 (#page-delivery 범위로 스코프 분리)
+  document.querySelectorAll('#page-delivery .sort-arrow').forEach(el=>{
     el.textContent = (el.dataset.col===sort.col) ? (sort.dir==='asc'?' ▲':' ▼') : '';
   });
 
