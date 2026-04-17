@@ -2900,6 +2900,13 @@ function setSchSort(col) {
   renderSchedule();
 }
 
+// "YYYY-MM-DD" 같은 날짜 문자열에서 앞 "YYYY-MM"만 추출 (아니면 빈 문자열)
+// 납품 스케줄에서 월 단위 매칭에 사용
+function parseYYYYMM(v) {
+  const s = String(v||'');
+  return /^\d{4}-\d{2}/.test(s) ? s.slice(0,7) : '';
+}
+
 function renderSchedule() {
   const sites = S.data.sites, dlvs = S.data.deliveries;
   const tableEl = document.getElementById('schTable');
