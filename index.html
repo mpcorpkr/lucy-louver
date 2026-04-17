@@ -1191,9 +1191,9 @@ function renderDash강철() {
             formatter:(_v, ctxArg)=>{
               const r = cs[ctxArg.dataIndex];
               return [
-                `총 ${r.qty.toLocaleString()}개`,
-                `납품 ${r.dlvd.toLocaleString()}개`,
-                `잔여 ${r.rem.toLocaleString()}개`
+                `T ${r.qty.toLocaleString()}`,
+                `D ${r.dlvd.toLocaleString()}`,
+                `R ${r.rem.toLocaleString()}`
               ];
             }
           }
@@ -1213,9 +1213,9 @@ function renderDash강철() {
     const tRem  = allRows.reduce((s,r)=>s+r.rem,0);
     if (totalsEl) {
       totalsEl.innerHTML =
-        `<div>전체 계약: <span class="fw-bold text-primary">${tQty.toLocaleString()}개</span></div>` +
-        `<div>전체 납품: <span class="fw-bold text-success">${tDlvd.toLocaleString()}개</span></div>` +
-        `<div>전체 잔여: <span class="fw-bold ${tRem>0?'text-danger':'text-success'}">${tRem.toLocaleString()}개</span></div>`;
+        `<div><span class="fw-bold text-primary">T ${tQty.toLocaleString()}</span></div>` +
+        `<div><span class="fw-bold text-success">D ${tDlvd.toLocaleString()}</span></div>` +
+        `<div><span class="fw-bold ${tRem>0?'text-danger':'text-success'}">R ${tRem.toLocaleString()}</span></div>`;
     }
   } else if (totalsEl) {
     totalsEl.innerHTML = '<small class="text-muted">현장 없음</small>';
