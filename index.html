@@ -296,10 +296,12 @@ tbody tr:hover{background:#f8fafc}
               <option>연도분할형</option><option>케이스먼트형</option>
             </select>
           </div>
-          <div class="col-md-4"><label class="form-label">가로(mm)</label><input class="form-control" id="s_width"></div>
-          <div class="col-md-4"><label class="form-label">세로(mm)</label><input class="form-control" id="s_height"></div>
-          <div class="col-md-4"><label class="form-label">계약개수 *</label><input class="form-control" type="number" id="s_qty" min="0"></div>
-          <div class="col-md-4" id="s_priceWrap"><label class="form-label">단가(원)</label><input class="form-control" type="number" id="s_unitPrice" min="0"></div>
+          <div class="col-md-6" id="s_priceWrap"><label class="form-label">단가(원)</label><input class="form-control" type="number" id="s_unitPrice" min="0"></div>
+          <div class="col-12">
+            <label class="form-label fw-bold">규격 목록 * <small class="text-muted fw-normal">(가로×세로 mm / 계약개수 · 최소 1개, 최대 5개)</small></label>
+            <div id="s_specs" class="rounded p-2" style="background:#f8fafc;border:1px solid #e2e8f0"></div>
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addSpecRow()"><i class="bi bi-plus-lg"></i> 규격 추가</button>
+          </div>
           <div class="col-12"><label class="form-label">색상코드 (쉼표로 구분)</label><input class="form-control" id="s_colors" placeholder="예) RAL7024, RAL9006"></div>
           <div class="col-md-3">
             <label class="form-label">포장</label>
@@ -398,25 +400,58 @@ tbody tr:hover{background:#f8fafc}
       </div>
       <div class="modal-body">
         <div class="row g-3">
+          <!-- 1. 납품일 -->
+          <div class="col-md-6"><label class="form-label">납품일 *</label><input class="form-control" type="date" id="d_date"></div>
+          <!-- 2. 현장명 -->
           <div class="col-md-6">
-            <label class="form-label">현장 선택 *</label>
+            <label class="form-label">현장명 *</label>
             <select class="form-select" id="d_siteId" onchange="onDlvSiteChange()">
               <option value="">현장을 선택하세요</option>
             </select>
           </div>
-          <div class="col-md-6"><label class="form-label">납품일 *</label><input class="form-control" type="date" id="d_date"></div>
-          <div class="col-md-6"><label class="form-label">규격</label><input class="form-control" id="d_spec" placeholder="예) 100×2000"></div>
-          <div class="col-md-6"><label class="form-label">색상</label><input class="form-control" id="d_color"></div>
-          <div class="col-md-4"><label class="form-label">납품 개수 *</label><input class="form-control" type="number" id="d_qty" min="1"></div>
-          <div class="col-md-4" id="d_carWrap">
-            <label class="form-label">차량 종류</label>
-            <select class="form-select" id="d_carType">
-              <option value="">선택</option>
-              <option>1톤</option><option>2.5톤</option><option>5톤</option><option>11톤</option><option>25톤</option><option>기타</option>
+          <!-- 3. 규격 선택 -->
+          <div class="col-md-6">
+            <label class="form-label">규격 *</label>
+            <select class="form-select" id="d_spec" onchange="updateDlvTotals()">
+              <option value="">먼저 현장을 선택하세요</option>
             </select>
           </div>
+          <!-- 4. 색상 선택 -->
+          <div class="col-md-6">
+            <label class="form-label">색상</label>
+            <select class="form-select" id="d_color">
+              <option value="">먼저 현장을 선택하세요</option>
+            </select>
+          </div>
+          <!-- 5. 납품 개수 -->
+          <div class="col-md-4"><label class="form-label">납품 개수 *</label><input class="form-control" type="number" id="d_qty" min="1"></div>
+          <!-- 6. 차량종류 (자유 입력) -->
+          <div class="col-md-4" id="d_carWrap">
+            <label class="form-label">차량 종류</label>
+            <input class="form-control" id="d_carType" placeholder="예) 5ton차">
+          </div>
+          <!-- 7. 화물비 -->
           <div class="col-md-4" id="d_costWrap"><label class="form-label">화물비 (원)</label><input class="form-control" type="number" id="d_cost" min="0"></div>
+          <!-- 8. 비고 -->
           <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="d_note" rows="2"></textarea></div>
+          <!-- 9·10. 자동 계산 (총납품 / 잔여) -->
+          <div class="col-12">
+            <div class="rounded p-3" style="background:#f8fafc;border:1px solid #e2e8f0">
+              <div class="row g-3 text-center">
+                <div class="col-6">
+                  <div class="text-muted mb-1" style="font-size:.82rem"><i class="bi bi-box-seam"></i> 총납품개수</div>
+                  <div class="fw-bold text-success" id="d_totalDelivered" style="font-size:1.5rem">-</div>
+                  <small class="text-muted" id="d_totalDeliveredLabel">규격 선택 시 자동 계산</small>
+                </div>
+                <div class="col-6" style="border-left:1px solid #e2e8f0">
+                  <div class="text-muted mb-1" style="font-size:.82rem"><i class="bi bi-hourglass-split"></i> 잔여 납품개수</div>
+                  <div class="fw-bold" id="d_remaining" style="font-size:1.5rem">-</div>
+                  <small class="text-muted" id="d_remainingLabel">계약 - 납품</small>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 재고 사용 내역 -->
           <div class="col-12">
             <label class="form-label fw-bold">재고 사용 내역</label>
             <div id="d_invItems"></div>
@@ -815,17 +850,32 @@ function _pad2(n) { return String(n).padStart(2,'0'); }
 function _ymdLocal(d) { return `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}`; }
 
 function mkSite(r, i) {
-  // A:현장명 B:시공사 C:구매회사 D:루버타입 E:계약개수 F:단가 G:가로 H:세로
+  // A:현장명 B:시공사 C:구매회사 D:루버타입 E:규격1_계약개수 F:단가 G:규격1_가로 H:규격1_세로
   // I:색상코드 J:포장 K:시공 L:방충망타입 M:사춤코킹 N:현장주소 O:준공일 P:결재일
   // Q:공사담당자명 R:공사담당자연락처 S:공사담당자이메일
   // T:기성담당자명 U:기성담당자연락처 V:기성담당자이메일 W:기성마감일 X:상태
+  // Y~AJ: 규격2~5 (가로, 세로, 계약개수 × 4) = 12칸
   const rowNum = i + 2;
+  const specs = [];
+  // 규격1: 기존 E(계약개수), G(가로), H(세로) 활용 (하위호환)
+  const w1 = String(r[6]||'').trim(), h1 = String(r[7]||'').trim(), q1 = +r[4]||0;
+  if (w1 || h1 || q1 > 0) specs.push({ width: w1, height: h1, qty: q1 });
+  // 규격2~5: Y~AJ (인덱스 24~35, 3칸씩 4쌍)
+  for (let k = 0; k < 4; k++) {
+    const base = 24 + k*3;
+    const w = String(r[base]||'').trim();
+    const h = String(r[base+1]||'').trim();
+    const q = +r[base+2] || 0;
+    if (w || h || q > 0) specs.push({ width: w, height: h, qty: q });
+  }
+  const totalQty = specs.reduce((s, sp) => s + sp.qty, 0);
   return {
     _row:rowNum, id:String(rowNum),
     name:String(r[0]||''), contractor:String(r[1]||''), buyer:String(r[2]||''),
-    louverType:String(r[3]||''), qty:+r[4]||0,
+    louverType:String(r[3]||''),
+    qty: totalQty,
     ...(S.perm.canPrice ? { unitPrice:+r[5]||0 } : {}),
-    width:String(r[6]||''), height:String(r[7]||''),
+    specs,
     colors:safeJSON(r[8],[]),
     packing:String(r[9]||'내부'), install:String(r[10]||'포함'),
     screen:String(r[11]||'고정형'), caulk:String(r[12]||'포함'),
@@ -875,7 +925,7 @@ function mkCustomer(r, i) {
 }
 
 // =================== LOADERS ===================
-async function loadSites()     { const r=await apiRequest('GET',`${SH.SITE}!A2:X`); if(r) S.data.sites=(r.values||[]).filter(row=>row[0]).map(mkSite); }
+async function loadSites()     { const r=await apiRequest('GET',`${SH.SITE}!A2:AJ`); if(r) S.data.sites=(r.values||[]).filter(row=>row[0]).map(mkSite); }
 async function loadDeliveries(){ const r=await apiRequest('GET',`${SH.DLV}!A2:L`);  if(r) S.data.deliveries=(r.values||[]).filter(row=>row[0]).map(mkDelivery); }
 async function loadOrdersDH()  { const r=await apiRequest('GET',`${SH.DH}!A2:J`);   if(r) S.data.ordersDH=(r.values||[]).filter(row=>row[0]).map(mkOrderDH); }
 async function loadOrdersMG()  { const r=await apiRequest('GET',`${SH.MG}!A2:Q`);   if(r) S.data.ordersMG=(r.values||[]).filter(row=>row[0]).map(mkOrderMG); }
@@ -884,6 +934,9 @@ async function loadCustomers() { const r=await apiRequest('GET',`${SH.CUST}!A2:G
 // =================== COMPUTED ===================
 function totalDelivered(siteId) {
   return S.data.deliveries.filter(d=>d.siteId===siteId).reduce((s,d)=>s+d.qty,0);
+}
+function totalDeliveredBySpec(siteId, specKey) {
+  return S.data.deliveries.filter(d=>d.siteId===siteId && d.spec===specKey).reduce((s,d)=>s+d.qty,0);
 }
 function remaining(site) { return site.qty - totalDelivered(site.id); }
 
@@ -1402,16 +1455,58 @@ function openSiteDetail(id) {
       <div class="col-4"><b>납품 완료</b><div class="mt-1 fw-bold text-success">${dlvd}</div></div>
       <div class="col-4"><b>잔여</b><div class="mt-1 ${rem>0?'text-danger fw-bold':''}">${rem}</div></div>
       ${S.perm.canPrice?`<div class="col-4"><b>단가</b><div class="mt-1">${(s.unitPrice||0).toLocaleString()}원</div></div>`:''}
-      <div class="col-4"><b>규격 가로</b><div class="mt-1">${s.width||'-'}mm</div></div>
-      <div class="col-4"><b>규격 세로</b><div class="mt-1">${s.height||'-'}mm</div></div>
       <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-1">
-          <b>납품율</b>
+          <b>전체 납품율</b>
           <span class="fw-bold ${done?'text-primary':'text-success'}" style="font-size:1.1rem">${pct}% ${done?'<span class="badge bg-primary ms-1">완료</span>':''}</span>
         </div>
         <div class="progress" style="height:12px">
           <div class="progress-bar ${done?'bg-primary':'bg-success'}" style="width:${pct}%;transition:width .4s"></div>
         </div>
+      </div>
+      <div class="col-12">
+        <div class="fw-bold mb-2" style="color:var(--lucy)"><i class="bi bi-grid-3x3-gap"></i> 규격별 납품 현황 <span class="badge bg-light text-dark ms-1">${(s.specs||[]).length}개 규격</span></div>
+        ${(s.specs||[]).length===0
+          ? '<div class="text-muted text-center py-3" style="background:#f8fafc;border-radius:8px">등록된 규격이 없습니다.</div>'
+          : `<div class="table-responsive" style="border:1px solid #e2e8f0;border-radius:8px">
+              <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
+                <thead style="background:#f8fafc">
+                  <tr>
+                    <th>규격</th>
+                    <th class="text-center">계약</th>
+                    <th class="text-center">납품</th>
+                    <th class="text-center">잔여</th>
+                    <th style="min-width:130px">진행률</th>
+                  </tr>
+                </thead>
+                <tbody>${(s.specs||[]).map((sp,idx)=>{
+                  const key=`${sp.width}×${sp.height}`;
+                  const d=totalDeliveredBySpec(id,key);
+                  const r=sp.qty-d;
+                  const p=sp.qty>0?Math.min(100,Math.round(d/sp.qty*100)):0;
+                  const sDone=p>=100;
+                  return `<tr>
+                    <td><span class="badge bg-light text-dark me-1" style="font-size:.7rem">${idx+1}</span><span class="fw-bold">${sp.width||'-'}×${sp.height||'-'}</span><small class="text-muted ms-1">mm</small></td>
+                    <td class="text-center">${sp.qty}</td>
+                    <td class="text-center fw-bold text-success">${d}</td>
+                    <td class="text-center ${r>0?'text-danger fw-bold':''}">${r}</td>
+                    <td>
+                      <div class="progress mb-1" style="height:7px"><div class="progress-bar ${sDone?'bg-primary':'bg-success'}" style="width:${p}%"></div></div>
+                      <small class="${sDone?'text-primary fw-bold':'text-success fw-bold'}">${p}%${sDone?' <span class="badge bg-primary ms-1" style="font-size:.65rem;padding:2px 5px">완료</span>':''}</small>
+                    </td>
+                  </tr>`;
+                }).join('')}</tbody>
+                <tfoot style="background:#f1f5f9">
+                  <tr>
+                    <td class="fw-bold">합계</td>
+                    <td class="text-center fw-bold">${s.qty}</td>
+                    <td class="text-center fw-bold text-success">${dlvd}</td>
+                    <td class="text-center fw-bold ${rem>0?'text-danger':''}">${rem}</td>
+                    <td class="fw-bold ${done?'text-primary':'text-success'}">${pct}%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>`}
       </div>
       <div class="col-6"><b>색상코드</b><div class="mt-1">${colors}</div></div>
       <div class="col-3"><b>포장</b><div class="mt-1">${s.packing}</div></div>
@@ -1464,11 +1559,12 @@ function openSiteModal(id) {
   document.getElementById('siteModalTitle').textContent = isEdit?'현장 수정':'현장 추가';
   S.editingIds.site = id||null;
   const clear = ids => ids.forEach(f=>{ const e=document.getElementById(f); if(e) e.value=''; });
-  clear(['s_name','s_contractor','s_buyer','s_width','s_height','s_colors','s_addr',
+  clear(['s_name','s_contractor','s_buyer','s_colors','s_addr',
     's_cm_name','s_cm_tel','s_cm_email','s_ki_name','s_ki_tel','s_ki_email',
-    's_qty','s_unitPrice','s_compDate']);
+    's_unitPrice','s_compDate']);
   document.getElementById('s_louverType').value='';
   document.getElementById('s_priceWrap').style.display = S.perm.canPrice?'':'none';
+  document.getElementById('s_specs').innerHTML='';
   // reset selects
   document.getElementById('s_packing').value='내부';
   document.getElementById('s_install').value='포함';
@@ -1486,10 +1582,9 @@ function openSiteModal(id) {
     document.getElementById('s_contractor').value=s.contractor;
     document.getElementById('s_buyer').value=s.buyer;
     document.getElementById('s_louverType').value=s.louverType;
-    document.getElementById('s_qty').value=s.qty;
     if(S.perm.canPrice) document.getElementById('s_unitPrice').value=s.unitPrice||'';
-    document.getElementById('s_width').value=s.width;
-    document.getElementById('s_height').value=s.height;
+    (s.specs||[]).forEach(sp=>addSpecRow(sp));
+    if(!(s.specs||[]).length) addSpecRow();
     document.getElementById('s_colors').value=Array.isArray(s.colors)?s.colors.join(', '):(s.colors||'');
     document.getElementById('s_packing').value=s.packing||'내부';
     document.getElementById('s_install').value=s.install||'포함';
@@ -1505,26 +1600,70 @@ function openSiteModal(id) {
     document.getElementById('s_ki_tel').value=s.kiTel;
     document.getElementById('s_ki_email').value=s.kiEmail;
     setDayCombo('s_ki_due','s_ki_due_day',s.kiDue,['말일','20일','25일']);
+  } else {
+    addSpecRow(); // 신규 추가 시 빈 규격 1개로 시작
   }
   new bootstrap.Modal(document.getElementById('siteModal')).show();
 }
 
+// === 규격 행 관리 ===
+function addSpecRow(data) {
+  const wrap=document.getElementById('s_specs');
+  if(wrap.children.length>=5){toast('규격은 최대 5개까지 등록 가능합니다','warning');return;}
+  const row=document.createElement('div');
+  row.className='d-flex gap-2 mb-2 align-items-center spec-row';
+  row.innerHTML=`
+    <span class="badge bg-primary spec-label" style="min-width:58px;font-size:.75rem;padding:6px 8px">규격 ${wrap.children.length+1}</span>
+    <input type="number" min="0" class="form-control form-control-sm spec-w" placeholder="가로(mm)" value="${data?.width||''}" style="max-width:120px">
+    <span style="color:#64748b">×</span>
+    <input type="number" min="0" class="form-control form-control-sm spec-h" placeholder="세로(mm)" value="${data?.height||''}" style="max-width:120px">
+    <input type="number" min="0" class="form-control form-control-sm spec-q" placeholder="계약개수" value="${data?.qty||''}" style="max-width:120px">
+    <small class="text-muted">개</small>
+    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" onclick="removeSpecRow(this)"><i class="bi bi-trash"></i></button>`;
+  wrap.appendChild(row);
+}
+function removeSpecRow(btn) {
+  const wrap=document.getElementById('s_specs');
+  if(wrap.children.length<=1){toast('규격은 최소 1개 이상 필요합니다','warning');return;}
+  btn.closest('.spec-row').remove();
+  document.querySelectorAll('#s_specs .spec-row .spec-label').forEach((lb,i)=>{lb.textContent=`규격 ${i+1}`;});
+}
+function collectSpecs() {
+  const specs=[];
+  document.querySelectorAll('#s_specs .spec-row').forEach(row=>{
+    const w=row.querySelector('.spec-w').value.trim();
+    const h=row.querySelector('.spec-h').value.trim();
+    const q=+row.querySelector('.spec-q').value||0;
+    if(w||h||q>0) specs.push({width:w,height:h,qty:q});
+  });
+  return specs;
+}
+
 async function saveSite() {
   const name=document.getElementById('s_name').value.trim();
-  const qty=+document.getElementById('s_qty').value||0;
   if(!name){toast('현장명을 입력하세요','error');return;}
-  if(!qty){toast('계약 개수를 입력하세요','error');return;}
+  const specs=collectSpecs();
+  if(!specs.length){toast('규격을 최소 1개 등록하세요','error');return;}
+  for(let i=0;i<specs.length;i++){
+    if(!specs[i].width||!specs[i].height){toast(`규격 ${i+1}의 가로/세로를 입력하세요`,'error');return;}
+    if(!specs[i].qty){toast(`규격 ${i+1}의 계약개수를 입력하세요`,'error');return;}
+  }
+  // 규격 중복 체크 (가로×세로 기준)
+  const keys=specs.map(sp=>`${sp.width}×${sp.height}`);
+  if(new Set(keys).size!==keys.length){toast('동일한 가로×세로 규격이 중복됩니다','error');return;}
+  const spec1=specs[0], rest=specs.slice(1);
   const colors=document.getElementById('s_colors').value.split(',').map(c=>c.trim()).filter(Boolean);
   const getSel=id=>document.getElementById(id)?.value||'';
   const row=[
-    // A:현장명 B:시공사 C:구매회사 D:루버타입 E:계약개수 F:단가 G:가로 H:세로
+    // A:현장명 B:시공사 C:구매회사 D:루버타입 E:규격1_계약개수 F:단가 G:규격1_가로 H:규격1_세로
     name,
     document.getElementById('s_contractor').value.trim(),
     document.getElementById('s_buyer').value.trim(),
-    document.getElementById('s_louverType').value, qty,
+    document.getElementById('s_louverType').value,
+    spec1.qty,
     S.perm.canPrice?(+document.getElementById('s_unitPrice').value||0):'',
-    document.getElementById('s_width').value.trim(),
-    document.getElementById('s_height').value.trim(),
+    spec1.width,
+    spec1.height,
     // I:색상코드 J:포장 K:시공 L:방충망타입 M:사춤코킹
     JSON.stringify(colors),
     getSel('s_packing'),getSel('s_install'),getSel('s_screen'),getSel('s_caulk'),
@@ -1543,11 +1682,17 @@ async function saveSite() {
     getDayVal('s_ki_due','s_ki_due_day'),
     ''  // X:상태
   ];
+  // Y~AJ: 규격2~5 (각 가로, 세로, 계약개수 × 4 = 12칸)
+  for(let k=0;k<4;k++){
+    const sp=rest[k];
+    if(sp) row.push(sp.width, sp.height, sp.qty);
+    else   row.push('', '', '');
+  }
   if(S.editingIds.site){
     const s=S.data.sites.find(x=>x.id===S.editingIds.site);
-    if(s) await apiRequest('PUT',`${SH.SITE}!A${s._row}:X${s._row}`,[row]);
+    if(s) await apiRequest('PUT',`${SH.SITE}!A${s._row}:AJ${s._row}`,[row]);
   } else {
-    await apiRequest('POST',`${SH.SITE}!A:X`,[row]);
+    await apiRequest('POST',`${SH.SITE}!A:AJ`,[row]);
   }
   bootstrap.Modal.getInstance(document.getElementById('siteModal'))?.hide();
   toast(isEdit(S.editingIds.site)?'현장이 수정되었습니다':'현장이 추가되었습니다','success');
@@ -1557,7 +1702,7 @@ async function saveSite() {
 async function deleteSite(id) {
   if(!confirm('이 현장을 삭제하시겠습니까?')) return;
   const s=S.data.sites.find(x=>x.id===id); if(!s) return;
-  await apiRequest('PUT',`${SH.SITE}!A${s._row}:X${s._row}`,[Array(24).fill('')]);
+  await apiRequest('PUT',`${SH.SITE}!A${s._row}:AJ${s._row}`,[Array(36).fill('')]);
   toast('현장이 삭제되었습니다','success');
   await loadSites(); renderSiteList();
 }
@@ -1592,11 +1737,13 @@ function openDlvModal(id) {
   const sel=document.getElementById('d_siteId');
   sel.innerHTML='<option value="">현장을 선택하세요</option>';
   S.data.sites.forEach(s=>{ sel.innerHTML+=`<option value="${s.id}">${s.name}</option>`; });
-  ['d_spec','d_color','d_note'].forEach(f=>document.getElementById(f).value='');
+  ['d_note','d_carType'].forEach(f=>document.getElementById(f).value='');
   ['d_qty','d_cost'].forEach(f=>document.getElementById(f).value='');
   document.getElementById('d_date').value=new Date().toISOString().slice(0,10);
-  document.getElementById('d_carType').value='';
   document.getElementById('d_invItems').innerHTML='';
+  // 규격·색상 드롭다운 초기화 (현장 선택 전)
+  document.getElementById('d_spec').innerHTML='<option value="">먼저 현장을 선택하세요</option>';
+  document.getElementById('d_color').innerHTML='<option value="">먼저 현장을 선택하세요</option>';
   const canCost=S.perm.canEditDeliveryCost;
   document.getElementById('d_carWrap').style.display=canCost?'':'none';
   document.getElementById('d_costWrap').style.display=canCost?'':'none';
@@ -1604,12 +1751,13 @@ function openDlvModal(id) {
     const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
     document.getElementById('d_siteId').value=d.siteId;
     document.getElementById('d_date').value=d.date;
-    document.getElementById('d_spec').value=d.spec;
-    document.getElementById('d_color').value=d.color;
     document.getElementById('d_qty').value=d.qty;
     if(canCost){document.getElementById('d_carType').value=d.carType||'';document.getElementById('d_cost').value=d.cost||'';}
     document.getElementById('d_note').value=d.note;
     safeJSON(d.invUsage,[]).forEach(u=>addInvUsageRow(u));
+    onDlvSiteChange(d.spec, d.color); // 규격·색상 드롭다운 채우고 현재 값 복원 + 총/잔여 계산
+  } else {
+    updateDlvTotals(); // 초기 표시 리셋
   }
   new bootstrap.Modal(document.getElementById('dlvModal')).show();
 }
@@ -1628,19 +1776,93 @@ function addInvUsageRow(data) {
   document.getElementById('d_invItems').appendChild(div);
 }
 
-function onDlvSiteChange() {
+function onDlvSiteChange(preserveSpec, preserveColor) {
   const sid=document.getElementById('d_siteId').value;
   const site=S.data.sites.find(s=>s.id===sid);
-  if(site&&Array.isArray(site.colors)&&site.colors.length>0)
-    document.getElementById('d_color').value=site.colors[0];
+  const specSel=document.getElementById('d_spec');
+  const colorSel=document.getElementById('d_color');
+  const curSpec = preserveSpec !== undefined ? preserveSpec : specSel.value;
+  const curColor = preserveColor !== undefined ? preserveColor : colorSel.value;
+  if(!site){
+    specSel.innerHTML='<option value="">먼저 현장을 선택하세요</option>';
+    colorSel.innerHTML='<option value="">먼저 현장을 선택하세요</option>';
+    updateDlvTotals();
+    return;
+  }
+  // 규격 드롭다운: "가로×세로mm" 형식
+  const specOpts = site.specs || [];
+  specSel.innerHTML = specOpts.length
+    ? '<option value="">규격을 선택하세요</option>'
+    : '<option value="">등록된 규격이 없습니다</option>';
+  specOpts.forEach(sp=>{
+    const key=`${sp.width}×${sp.height}`;
+    specSel.innerHTML+=`<option value="${key}">${key}mm</option>`;
+  });
+  if(curSpec && ![...specSel.options].some(o=>o.value===curSpec)){
+    specSel.innerHTML+=`<option value="${curSpec}">${curSpec} (이전 규격)</option>`;
+  }
+  // 규격 1개면 자동 선택
+  if(!curSpec && specOpts.length===1) specSel.value = `${specOpts[0].width}×${specOpts[0].height}`;
+  else specSel.value = curSpec || '';
+
+  // 색상 드롭다운: 색상코드 그대로
+  const colors = Array.isArray(site.colors) ? site.colors.filter(Boolean) : [];
+  colorSel.innerHTML = colors.length
+    ? '<option value="">색상을 선택하세요</option>'
+    : '<option value="">등록된 색상이 없습니다</option>';
+  colors.forEach(c=>{ colorSel.innerHTML+=`<option value="${c}">${c}</option>`; });
+  if(curColor && !colors.includes(curColor)){
+    colorSel.innerHTML+=`<option value="${curColor}">${curColor} (이전 색상)</option>`;
+  }
+  // 색상 1개면 자동 선택
+  if(!curColor && colors.length===1) colorSel.value = colors[0];
+  else colorSel.value = curColor || '';
+
+  updateDlvTotals();
+}
+
+function updateDlvTotals() {
+  const sid=document.getElementById('d_siteId').value;
+  const spec=document.getElementById('d_spec').value;
+  const site=S.data.sites.find(s=>s.id===sid);
+  const totalEl=document.getElementById('d_totalDelivered');
+  const remainEl=document.getElementById('d_remaining');
+  const totalLabel=document.getElementById('d_totalDeliveredLabel');
+  const remainLabel=document.getElementById('d_remainingLabel');
+  if(!site){
+    totalEl.textContent='-'; remainEl.textContent='-';
+    totalLabel.textContent='현장 선택 시 자동 계산';
+    remainLabel.textContent='계약 - 납품';
+    remainEl.className='fw-bold';
+    return;
+  }
+  let contractQty, delivered, label;
+  if(spec){
+    const sp=(site.specs||[]).find(x=>`${x.width}×${x.height}`===spec);
+    contractQty = sp ? sp.qty : 0;
+    delivered = totalDeliveredBySpec(sid, spec);
+    label = `규격 ${spec}mm 기준`;
+  } else {
+    contractQty = site.qty;
+    delivered = totalDelivered(sid);
+    label = '현장 전체 기준';
+  }
+  const rem = contractQty - delivered;
+  totalEl.textContent = `${delivered.toLocaleString()} 개`;
+  remainEl.textContent = `${rem.toLocaleString()} 개`;
+  totalLabel.textContent = label;
+  remainLabel.textContent = `계약 ${contractQty.toLocaleString()} − 납품 ${delivered.toLocaleString()}`;
+  remainEl.className = `fw-bold ${rem<=0?'text-primary':rem<=10?'text-warning':'text-danger'}`;
 }
 
 async function saveDelivery() {
   const siteId=document.getElementById('d_siteId').value;
   const date=document.getElementById('d_date').value;
+  const spec=document.getElementById('d_spec').value;
   const qty=+document.getElementById('d_qty').value||0;
   const site=S.data.sites.find(s=>s.id===siteId);
   if(!site){toast('현장을 선택하세요','error');return;}
+  if(!spec){toast('규격을 선택하세요','error');return;}
   if(!date){toast('납품일을 입력하세요','error');return;}
   if(!qty){toast('납품 개수를 입력하세요','error');return;}
   const invRows=[];
@@ -1652,7 +1874,7 @@ async function saveDelivery() {
   const canCost=S.perm.canEditDeliveryCost;
   const row=[
     S.editingIds.dlv||genId(), siteId, site.name, date,
-    document.getElementById('d_spec').value.trim(),
+    spec,
     document.getElementById('d_color').value.trim(),
     qty,
     canCost?document.getElementById('d_carType').value:'',
