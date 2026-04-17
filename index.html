@@ -58,9 +58,10 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-wrap{overflow:auto;max-height:75vh;position:relative}
 .schedule-table{border-collapse:separate;border-spacing:0;font-size:.8rem;width:max-content;margin:0}
 .schedule-table th,.schedule-table td{border:1px solid #e2e8f0;padding:6px 8px;text-align:center;background:#fff;white-space:nowrap;vertical-align:middle}
-.schedule-table thead th{position:sticky;background:#f8fafc;font-weight:600;z-index:3}
-.schedule-table thead tr:first-child th{top:0;height:34px}
-.schedule-table thead tr:nth-child(2) th{top:34px;height:30px}
+.schedule-table thead th{position:sticky;background:#f8fafc;font-weight:600;z-index:3;box-sizing:border-box}
+.schedule-table thead tr:first-child > th{top:0;height:34px}
+.schedule-table thead tr:first-child > th[rowspan="2"]{height:64px}
+.schedule-table thead tr:nth-child(2) > th{top:34px;height:30px}
 .schedule-table tfoot th{position:sticky;bottom:0;background:#f1f5f9;font-weight:700;z-index:3}
 .schedule-table .col-frozen{position:sticky;background:#fff;z-index:2}
 .schedule-table thead .col-frozen{background:#f8fafc;z-index:6}
@@ -325,7 +326,11 @@ tbody tr:hover{background:#f8fafc}
       </div>
       <div class="card"><div class="card-body p-0">
         <div class="table-responsive"><table class="table table-hover mb-0">
-          <thead><tr><th>거래처명</th><th>담당자</th><th>연락처</th><th>이메일</th><th>주소</th><th>비고</th><th>관리</th></tr></thead>
+          <thead><tr>
+            <th class="sortable" onclick="setCustSort('name')">거래처명<span class="sort-arrow" data-col="name"></span></th>
+            <th>담당자명</th><th>핸드폰</th><th>전화번호</th><th>팩스번호</th>
+            <th>이메일</th><th>기성담당자명</th><th>기성연락처</th><th>비고</th><th>관리</th>
+          </tr></thead>
           <tbody id="custTbody"></tbody>
         </table></div>
       </div></div>
@@ -636,10 +641,13 @@ tbody tr:hover{background:#f8fafc}
       <div class="modal-body">
         <div class="row g-3">
           <div class="col-md-6"><label class="form-label">거래처명 *</label><input class="form-control" id="c_name"></div>
-          <div class="col-md-6"><label class="form-label">담당자</label><input class="form-control" id="c_manager"></div>
-          <div class="col-md-6"><label class="form-label">연락처</label><input class="form-control" id="c_tel"></div>
-          <div class="col-md-6"><label class="form-label">이메일</label><input class="form-control" id="c_email"></div>
-          <div class="col-12"><label class="form-label">주소</label><input class="form-control" id="c_addr"></div>
+          <div class="col-md-6"><label class="form-label">담당자명</label><input class="form-control" id="c_manager"></div>
+          <div class="col-md-4"><label class="form-label">핸드폰</label><input class="form-control" id="c_mobile"></div>
+          <div class="col-md-4"><label class="form-label">전화번호</label><input class="form-control" id="c_phone"></div>
+          <div class="col-md-4"><label class="form-label">팩스번호</label><input class="form-control" id="c_fax"></div>
+          <div class="col-12"><label class="form-label">이메일</label><input class="form-control" id="c_email"></div>
+          <div class="col-md-6"><label class="form-label">기성담당자명</label><input class="form-control" id="c_kiManager"></div>
+          <div class="col-md-6"><label class="form-label">기성연락처</label><input class="form-control" id="c_kiTel"></div>
           <div class="col-12"><label class="form-label">비고</label><textarea class="form-control" id="c_note" rows="2"></textarea></div>
         </div>
       </div>
@@ -708,6 +716,7 @@ const S = {
   dlvSort:{ col:'date', dir:'desc' }, // 기본: 납품일 최신순
   siteSort:{ col:'name', dir:'asc' },  // 기본: 현장명 가나다순
   schSort:{ col:'name', dir:'asc' },   // 납품 스케줄: 현장명 가나다순 기본
+  custSort:{ col:'name', dir:'asc' },  // 거래처: 거래처명 가나다순 기본
   charts:{}
 };
 let selectedUser = null;
@@ -1056,10 +1065,21 @@ function mkOrderMG(r, i) {
   };
 }
 
+// 거래처 시트 스키마 (9컬럼):
+// A:거래처명 B:담당자명 C:핸드폰 D:전화번호 E:팩스번호 F:이메일 G:기성담당자명 H:기성연락처 I:비고
 function mkCustomer(r, i) {
+  const rowNum = i + 2;
   return {
-    _row:i+2, id:String(r[0]||''), name:String(r[1]||''), manager:String(r[2]||''),
-    tel:String(r[3]||''), email:String(r[4]||''), addr:String(r[5]||''), note:String(r[6]||'')
+    _row: rowNum, id: String(rowNum),
+    name:     String(r[0]||''),
+    manager:  String(r[1]||''),
+    mobile:   String(r[2]||''),
+    phone:    String(r[3]||''),
+    fax:      String(r[4]||''),
+    email:    String(r[5]||''),
+    kiManager:String(r[6]||''),
+    kiTel:    String(r[7]||''),
+    note:     String(r[8]||'')
   };
 }
 
@@ -1087,7 +1107,7 @@ async function loadDeliveries(){
 }
 async function loadOrdersDH()  { const r=await apiRequest('GET',`${SH.DH}!A2:J`);   if(r) S.data.ordersDH=(r.values||[]).filter(row=>row[0]).map(mkOrderDH); }
 async function loadOrdersMG()  { const r=await apiRequest('GET',`${SH.MG}!A2:Q`);   if(r) S.data.ordersMG=(r.values||[]).filter(row=>row[0]).map(mkOrderMG); }
-async function loadCustomers() { const r=await apiRequest('GET',`${SH.CUST}!A2:G`); if(r) S.data.customers=(r.values||[]).filter(row=>row[0]).map(mkCustomer); }
+async function loadCustomers() { const r=await apiRequest('GET',`${SH.CUST}!A2:I`); if(r) S.data.customers=(r.values||[]).filter(row=>row[0]).map(mkCustomer); }
 
 // =================== COMPUTED ===================
 // '루버' 품목만 계약 진행률에 집계. BIAS셋/SMA셋은 마감자재 현황으로 분리.
@@ -2784,16 +2804,35 @@ function renderInventory() {
 }
 
 // =================== CUSTOMERS ===================
+function setCustSort(col) {
+  if (!S.custSort) S.custSort = { col:'name', dir:'asc' };
+  if (S.custSort.col === col) S.custSort.dir = S.custSort.dir==='asc' ? 'desc' : 'asc';
+  else { S.custSort.col = col; S.custSort.dir = 'asc'; }
+  renderCustomers();
+}
+
 function renderCustomers() {
   const tbody=document.getElementById('custTbody');
-  const list=S.data.customers;
-  if(!list.length){tbody.innerHTML='<tr><td colspan="7" class="text-center py-4 text-muted">거래처가 없습니다</td></tr>';return;}
+  const sort = S.custSort || {col:'name', dir:'asc'};
+  const mult = sort.dir==='asc' ? 1 : -1;
+  const list = [...S.data.customers].sort((a,b)=>{
+    if (sort.col==='name') return (a.name||'').localeCompare(b.name||'','ko') * mult;
+    return 0;
+  });
+  // 헤더 화살표 갱신 (page-cust 범위로 스코프)
+  document.querySelectorAll('#page-cust .sort-arrow').forEach(el=>{
+    el.textContent = (el.dataset.col===sort.col) ? (sort.dir==='asc'?' ▲':' ▼') : '';
+  });
+  if(!list.length){tbody.innerHTML='<tr><td colspan="10" class="text-center py-4 text-muted">거래처가 없습니다</td></tr>';return;}
   tbody.innerHTML=list.map(c=>`<tr>
     <td class="fw-bold">${c.name}</td>
     <td>${c.manager||'-'}</td>
-    <td>${c.tel||'-'}</td>
+    <td>${c.mobile||'-'}</td>
+    <td>${c.phone||'-'}</td>
+    <td>${c.fax||'-'}</td>
     <td>${c.email||'-'}</td>
-    <td>${c.addr||'-'}</td>
+    <td>${c.kiManager||'-'}</td>
+    <td>${c.kiTel||'-'}</td>
     <td>${c.note||'-'}</td>
     <td>
       ${S.perm.canCust?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openCustModal('${c.id}')"><i class="bi bi-pencil"></i></button>
@@ -2806,14 +2845,18 @@ function openCustModal(id) {
   const isEdit=!!id;
   document.getElementById('custModalTitle').textContent=isEdit?'거래처 수정':'거래처 추가';
   S.editingIds.cust=id||null;
-  ['c_name','c_manager','c_tel','c_email','c_addr','c_note'].forEach(f=>document.getElementById(f).value='');
+  ['c_name','c_manager','c_mobile','c_phone','c_fax','c_email','c_kiManager','c_kiTel','c_note']
+    .forEach(f=>document.getElementById(f).value='');
   if(isEdit){
     const c=S.data.customers.find(x=>x.id===id); if(!c) return;
     document.getElementById('c_name').value=c.name;
     document.getElementById('c_manager').value=c.manager;
-    document.getElementById('c_tel').value=c.tel;
+    document.getElementById('c_mobile').value=c.mobile;
+    document.getElementById('c_phone').value=c.phone;
+    document.getElementById('c_fax').value=c.fax;
     document.getElementById('c_email').value=c.email;
-    document.getElementById('c_addr').value=c.addr;
+    document.getElementById('c_kiManager').value=c.kiManager;
+    document.getElementById('c_kiTel').value=c.kiTel;
     document.getElementById('c_note').value=c.note;
   }
   new bootstrap.Modal(document.getElementById('custModal')).show();
@@ -2822,18 +2865,22 @@ function openCustModal(id) {
 async function saveCust() {
   const name=document.getElementById('c_name').value.trim();
   if(!name){toast('거래처명을 입력하세요','error');return;}
+  // A:거래처명 B:담당자명 C:핸드폰 D:전화번호 E:팩스번호 F:이메일 G:기성담당자명 H:기성연락처 I:비고
   const row=[
-    S.editingIds.cust||genId(),name,
+    name,
     document.getElementById('c_manager').value.trim(),
-    document.getElementById('c_tel').value.trim(),
+    document.getElementById('c_mobile').value.trim(),
+    document.getElementById('c_phone').value.trim(),
+    document.getElementById('c_fax').value.trim(),
     document.getElementById('c_email').value.trim(),
-    document.getElementById('c_addr').value.trim(),
+    document.getElementById('c_kiManager').value.trim(),
+    document.getElementById('c_kiTel').value.trim(),
     document.getElementById('c_note').value.trim()
   ];
   if(S.editingIds.cust){
     const c=S.data.customers.find(x=>x.id===S.editingIds.cust);
-    if(c) await apiRequest('PUT',`${SH.CUST}!A${c._row}:G${c._row}`,[row]);
-  } else { await apiRequest('POST',`${SH.CUST}!A:G`,[row]); }
+    if(c) await apiRequest('PUT',`${SH.CUST}!A${c._row}:I${c._row}`,[row]);
+  } else { await apiRequest('POST',`${SH.CUST}!A:I`,[row]); }
   bootstrap.Modal.getInstance(document.getElementById('custModal'))?.hide();
   toast('거래처가 저장되었습니다','success');
   await loadCustomers(); renderCustomers();
@@ -2842,7 +2889,7 @@ async function saveCust() {
 async function deleteCust(id) {
   if(!confirm('거래처를 삭제하시겠습니까?')) return;
   const c=S.data.customers.find(x=>x.id===id); if(!c) return;
-  await apiRequest('PUT',`${SH.CUST}!A${c._row}:G${c._row}`,[Array(7).fill('')]);
+  await apiRequest('PUT',`${SH.CUST}!A${c._row}:I${c._row}`,[Array(9).fill('')]);
   toast('삭제되었습니다','success');
   await loadCustomers(); renderCustomers();
 }
@@ -3001,24 +3048,19 @@ function renderSchedule() {
   const arrow = c => schSort.col===c ? (schSort.dir==='asc' ? '▲' : '▼') : '';
 
   // ===== HTML 빌드 =====
-  // rowspan 대신 2행 각각 전체 컬럼셋 렌더 (sticky 호환성 문제 회피)
-  // 1행: 고정 컬럼 영역은 빈 스페이서 + 연도 colspan
-  // 2행: 고정 컬럼 헤더(현장명 등) + 월 헤더
+  // 1행: 고정 컬럼(rowspan=2) + 연도 colspan 셀
+  // 2행: 월 셀 (고정 컬럼은 rowspan으로 자동 확장)
   let html = '<thead>';
   html += '<tr>';
-  html += '<th class="col-frozen c1 sch-spacer"></th>';
-  html += '<th class="col-frozen c2 sch-spacer"></th>';
-  html += '<th class="col-frozen c3 sch-spacer"></th>';
-  html += '<th class="col-frozen c4 sch-spacer"></th>';
+  html += `<th rowspan="2" class="col-frozen c1 sortable" onclick="setSchSort('name')">현장명<span class="sch-arrow">${arrow('name')}</span></th>`;
+  html += '<th rowspan="2" class="col-frozen c2">시공사</th>';
+  html += '<th rowspan="2" class="col-frozen c3">준공일</th>';
+  html += `<th rowspan="2" class="col-frozen c4 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
   yearGroups.forEach(yg=>{
     html += `<th colspan="${yg.count}">${String(yg.y).slice(-2)}년</th>`;
   });
   html += '</tr>';
   html += '<tr>';
-  html += `<th class="col-frozen c1 sortable" onclick="setSchSort('name')">현장명<span class="sch-arrow">${arrow('name')}</span></th>`;
-  html += '<th class="col-frozen c2">시공사</th>';
-  html += '<th class="col-frozen c3">준공일</th>';
-  html += `<th class="col-frozen c4 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
   months.forEach(x=>{
     const isCur = x.key === todayKey;
     const curCls = isCur ? ' cur-month' : '';
@@ -3143,9 +3185,9 @@ function renderInvoice() {
     const bg = isS?'bg-success':isB?'bg-warning text-dark':'bg-primary';
     return `<tr>
       <td class="fw-bold">${d.siteName||'-'}</td>
-      <td>${d.spec?`${d.spec}mm`:'-'}</td>
       <td><span class="badge ${bg}" style="font-size:.72rem">${item}</span></td>
       <td class="text-nowrap">${d.date||'-'}</td>
+      <td>${d.spec?`${d.spec}mm`:'-'}</td>
       <td class="text-end fw-bold">${(d.qty||0).toLocaleString()}개</td>
       ${canPrice?`<td class="text-end">${amt?amt.toLocaleString()+'원':'-'}</td>`:''}
     </tr>`;
@@ -3175,9 +3217,9 @@ function renderInvoice() {
           <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
             <thead><tr>
               <th style="width:200px">현장명</th>
-              <th style="width:150px">규격</th>
               <th style="width:80px">품목</th>
               <th style="width:120px">납품일</th>
+              <th style="width:150px">규격</th>
               <th class="text-end" style="width:80px">개수</th>
               ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
             </tr></thead>
