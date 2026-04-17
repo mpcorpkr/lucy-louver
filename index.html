@@ -54,6 +54,28 @@ thead th.sortable:hover{background:#e2e8f0}
 .sort-arrow{margin-left:4px;font-size:.75rem;color:var(--lucy);display:inline-block;min-width:10px}
 .site-link{color:var(--lucy);text-decoration:none;font-weight:700;cursor:pointer}
 .site-link:hover{text-decoration:underline;color:var(--lucy-dark)}
+/* ===== 납품 스케줄 표 ===== */
+.schedule-wrap{overflow:auto;max-height:75vh;position:relative}
+.schedule-table{border-collapse:separate;border-spacing:0;font-size:.8rem;width:max-content;margin:0}
+.schedule-table th,.schedule-table td{border:1px solid #e2e8f0;padding:6px 8px;text-align:center;background:#fff;white-space:nowrap;vertical-align:middle}
+.schedule-table thead th{position:sticky;background:#f8fafc;font-weight:600;z-index:3}
+.schedule-table thead tr:first-child th{top:0;height:34px}
+.schedule-table thead tr:nth-child(2) th{top:34px;height:30px}
+.schedule-table tfoot th{position:sticky;bottom:0;background:#f1f5f9;font-weight:700;z-index:3}
+.schedule-table .col-frozen{position:sticky;background:#fff;z-index:2}
+.schedule-table thead .col-frozen{background:#f8fafc;z-index:6}
+.schedule-table tfoot .col-frozen{background:#f1f5f9;z-index:5}
+.schedule-table .c1{left:0;min-width:170px;max-width:220px;text-align:left}
+.schedule-table .c2{left:170px;min-width:110px;text-align:left}
+.schedule-table .c3{left:280px;min-width:100px}
+.schedule-table .c4{left:380px;min-width:70px}
+.schedule-table .cell-delivered{background:#d1fae5;color:#065f46;font-weight:700}
+.schedule-table .cell-future{background:#eff6ff;color:#2563eb;font-weight:700}
+.schedule-table .cell-move-in{background:#1e293b;color:#fff;font-weight:700;font-size:.72rem;line-height:1.1}
+.schedule-table .cell-move-in small{display:block;opacity:.75;font-weight:400}
+.schedule-table .site-link-cell{color:var(--lucy);cursor:pointer;font-weight:700}
+.schedule-table .site-link-cell:hover{text-decoration:underline;color:var(--lucy-dark)}
+.schedule-table .sch-spec{font-size:.7rem;color:#94a3b8;display:block}
 tbody td{font-size:.85rem;vertical-align:middle;padding:10px 12px;border-color:#f1f5f9}
 tbody tr:hover{background:#f8fafc}
 /* Form */
@@ -280,12 +302,37 @@ tbody tr:hover{background:#f8fafc}
     <!-- 통계/리포트 -->
     <div id="page-stats" class="page-section">
       <div class="page-header"><div class="page-title">통계 / 리포트</div></div>
-      <div class="row g-3 mb-4" id="statsCards"></div>
-      <div class="row g-3">
-        <div class="col-lg-6"><div class="card p-3"><div class="widget-title">월별 납품 수량</div><canvas id="chartMonthlyDelivery"></canvas></div></div>
-        <div class="col-lg-6"><div class="card p-3"><div class="widget-title">루버타입별 현장</div><canvas id="chartTypeBreakdown"></canvas></div></div>
-        <div class="col-lg-6" id="statsRevenueChart"><div class="card p-3"><div class="widget-title">월별 매출/납품비용</div><canvas id="chartRevenue"></canvas></div></div>
-        <div class="col-lg-6"><div class="card p-3"><div class="widget-title">현장별 진행률</div><div id="siteProgressList" style="max-height:320px;overflow-y:auto"></div></div></div>
+      <ul class="nav nav-tabs mb-3" id="statsTabs">
+        <li class="nav-item"><a class="nav-link active" href="#" onclick="switchStatsTab('stats',this);return false">통계</a></li>
+        <li class="nav-item"><a class="nav-link" href="#" onclick="switchStatsTab('schedule',this);return false">납품 스케줄</a></li>
+      </ul>
+      <!-- 통계 탭 -->
+      <div id="statsTab-stats">
+        <div class="row g-3 mb-4" id="statsCards"></div>
+        <div class="row g-3">
+          <div class="col-lg-6"><div class="card p-3"><div class="widget-title">월별 납품 수량</div><canvas id="chartMonthlyDelivery"></canvas></div></div>
+          <div class="col-lg-6"><div class="card p-3"><div class="widget-title">루버타입별 현장</div><canvas id="chartTypeBreakdown"></canvas></div></div>
+          <div class="col-lg-6" id="statsRevenueChart"><div class="card p-3"><div class="widget-title">월별 매출/납품비용</div><canvas id="chartRevenue"></canvas></div></div>
+          <div class="col-lg-6"><div class="card p-3"><div class="widget-title">현장별 진행률</div><div id="siteProgressList" style="max-height:320px;overflow-y:auto"></div></div></div>
+        </div>
+      </div>
+      <!-- 납품 스케줄 탭 -->
+      <div id="statsTab-schedule" style="display:none">
+        <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+          <label class="mb-0" style="font-size:.85rem;font-weight:600">연도</label>
+          <input type="number" id="schYearFrom" class="form-control form-control-sm" style="width:90px" min="2020" max="2050">
+          <span>~</span>
+          <input type="number" id="schYearTo" class="form-control form-control-sm" style="width:90px" min="2020" max="2050">
+          <button class="btn btn-sm btn-lucy" onclick="renderSchedule()">적용</button>
+          <div class="ms-auto d-flex gap-2" style="font-size:.75rem">
+            <span class="badge" style="background:#d1fae5;color:#065f46">🟢 납품완료</span>
+            <span class="badge" style="background:#eff6ff;color:#2563eb">🔵 예정</span>
+            <span class="badge" style="background:#1e293b;color:#fff">입주(준공월)</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="schedule-wrap"><table class="schedule-table" id="schTable"></table></div>
+        </div>
       </div>
     </div>
   </main>
@@ -1730,21 +1777,44 @@ function renderSiteList() {
 
 function openSiteDetail(id) {
   const s = S.data.sites.find(x=>x.id===id); if(!s) return;
-  const dlvd=totalDelivered(id), rem=remaining(s);
-  const pct=s.qty>0?Math.min(100,Math.round(dlvd/s.qty*100)):0;
-  const done=pct>=100;
+  // 같은 현장명의 모든 행을 통합 집계
+  const allRows = S.data.sites.filter(x => x.name === s.name);
+  const allNameDlvs = S.data.deliveries.filter(d => d.siteName === s.name);
+  const contractQty = allRows.reduce((sum, r) => sum + (r.qty||0), 0);
+  const dlvd = allNameDlvs.filter(_isLouver).reduce((a,d)=>a+(d.qty||0), 0);
+  const rem = contractQty - dlvd;
+  const pct = contractQty>0 ? Math.min(100, Math.round(dlvd/contractQty*100)) : 0;
+  const done = pct >= 100;
   const colors = Array.isArray(s.colors)?s.colors.join(', '):(s.colors||'-');
-  // 마감자재 누적
-  const ft = finishTotals(id);
-  const hasFinish = ft.count > 0;
-  // 납품 이력: 루버/목업만 (계약 대비 누적합계 계산용)
-  const siteDlvs=[...S.data.deliveries]
-    .filter(d=>d.siteId===id && _isLouver(d))
+  // 모든 행의 규격 통합 + 계약수량 내림차순 정렬
+  const allSpecs = [];
+  for (const r of allRows) {
+    for (const sp of (r.specs||[])) {
+      allSpecs.push({ width:sp.width, height:sp.height, qty:sp.qty||0, _rowId:r.id });
+    }
+  }
+  allSpecs.sort((a,b) => (b.qty||0) - (a.qty||0));
+  // 마감자재: 현장명 전체 기준 (SMA셋/BIAS셋 합계)
+  const smaSet  = allNameDlvs.filter(d=>d.item==='SMA셋' ).reduce((a,d)=>a+(d.qty||0), 0);
+  const biasSet = allNameDlvs.filter(d=>d.item==='BIAS셋').reduce((a,d)=>a+(d.qty||0), 0);
+  const finishCount = allNameDlvs.filter(d=>d.item==='SMA셋'||d.item==='BIAS셋').length;
+  const ft = {
+    count: finishCount, hasFinish: finishCount>0,
+    smaSet, biasSet, smaStandalone:0,
+    smaRequired: biasSet, smaDelivered: smaSet,
+    smaRemaining: biasSet - smaSet,
+    finishTotal: contractQty,
+    finishPct: contractQty>0 ? Math.min(100, Math.round(smaSet/contractQty*1000)/10) : 0
+  };
+  const hasFinish = ft.hasFinish;
+  // 납품 이력: 같은 이름의 모든 루버 납품 (누적합계는 통합 계약 기준)
+  const siteDlvs = [...allNameDlvs]
+    .filter(_isLouver)
     .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||'').localeCompare(b.createdAt||''));
   let cum=0;
   const dlvRows=siteDlvs.map(d=>{
     cum+=d.qty;
-    const cumPct=s.qty>0?Math.min(100,Math.round(cum/s.qty*100)):0;
+    const cumPct=contractQty>0?Math.min(100,Math.round(cum/contractQty*100)):0;
     return `<tr>
       <td class="text-nowrap">${d.date||'-'}</td>
       <td>${d.spec||'-'}</td>
@@ -1761,9 +1831,9 @@ function openSiteDetail(id) {
       <div class="col-6"><b>시공사</b><div class="mt-1">${s.contractor||'-'}</div></div>
       <div class="col-6"><b>구매회사</b><div class="mt-1">${s.buyer||'-'}</div></div>
       <div class="col-6"><b>루버타입</b><div class="mt-1">${s.louverType||'-'}</div></div>
-      <div class="col-4"><b>계약 개수</b><div class="mt-1">${s.qty}</div></div>
-      <div class="col-4"><b>납품 완료</b><div class="mt-1 fw-bold text-success">${dlvd}</div></div>
-      <div class="col-4"><b>잔여</b><div class="mt-1 ${rem>0?'text-danger fw-bold':''}">${rem}</div></div>
+      <div class="col-4"><b>계약 개수</b><div class="mt-1">${contractQty.toLocaleString()}</div></div>
+      <div class="col-4"><b>납품 완료</b><div class="mt-1 fw-bold text-success">${dlvd.toLocaleString()}</div></div>
+      <div class="col-4"><b>잔여</b><div class="mt-1 ${rem>0?'text-danger fw-bold':''}">${rem.toLocaleString()}</div></div>
       ${S.perm.canPrice?`<div class="col-4"><b>단가</b><div class="mt-1">${(s.unitPrice||0).toLocaleString()}원</div></div>`:''}
       <!-- 🔵 루버 납품 현황 -->
       <div class="col-12"><hr>
@@ -1774,8 +1844,8 @@ function openSiteDetail(id) {
         <div class="progress mb-3" style="height:10px">
           <div class="progress-bar bg-primary" style="width:${pct}%;transition:width .4s"></div>
         </div>
-        <div class="fw-bold mb-2" style="color:#475569;font-size:.88rem"><i class="bi bi-grid-3x3-gap"></i> 규격별 납품 <span class="badge bg-light text-dark ms-1">${(s.specs||[]).length}개 규격</span></div>
-        ${(s.specs||[]).length===0
+        <div class="fw-bold mb-2" style="color:#475569;font-size:.88rem"><i class="bi bi-grid-3x3-gap"></i> 규격별 납품 <span class="badge bg-light text-dark ms-1">${allSpecs.length}개 규격</span></div>
+        ${allSpecs.length===0
           ? '<div class="text-muted text-center py-3" style="background:#f8fafc;border-radius:8px">등록된 규격이 없습니다.</div>'
           : `<div class="table-responsive" style="border:1px solid #e2e8f0;border-radius:8px">
               <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
@@ -1788,17 +1858,17 @@ function openSiteDetail(id) {
                     <th style="min-width:130px">진행률</th>
                   </tr>
                 </thead>
-                <tbody>${(s.specs||[]).map((sp,idx)=>{
+                <tbody>${allSpecs.map((sp,idx)=>{
                   const key=`${sp.width}×${sp.height}`;
-                  const d=totalDeliveredBySpec(id,key);
-                  const r=sp.qty-d;
+                  const d=totalDeliveredBySpec(sp._rowId,key);
+                  const r=(sp.qty||0)-d;
                   const p=sp.qty>0?Math.min(100,Math.round(d/sp.qty*100)):0;
                   const sDone=p>=100;
                   return `<tr>
                     <td><span class="badge bg-light text-dark me-1" style="font-size:.7rem">${idx+1}</span><span class="fw-bold">${sp.width||'-'}×${sp.height||'-'}</span><small class="text-muted ms-1">mm</small></td>
-                    <td class="text-center">${sp.qty}</td>
-                    <td class="text-center fw-bold text-success">${d}</td>
-                    <td class="text-center ${r>0?'text-danger fw-bold':''}">${r}</td>
+                    <td class="text-center">${(sp.qty||0).toLocaleString()}</td>
+                    <td class="text-center fw-bold text-success">${d.toLocaleString()}</td>
+                    <td class="text-center ${r>0?'text-danger fw-bold':''}">${r.toLocaleString()}</td>
                     <td>
                       <div class="progress mb-1" style="height:7px"><div class="progress-bar bg-primary" style="width:${p}%"></div></div>
                       <small class="text-primary fw-bold">${p}%${sDone?' <span class="badge bg-primary ms-1" style="font-size:.65rem;padding:2px 5px">완료</span>':''}</small>
@@ -1808,9 +1878,9 @@ function openSiteDetail(id) {
                 <tfoot style="background:#f1f5f9">
                   <tr>
                     <td class="fw-bold">합계</td>
-                    <td class="text-center fw-bold">${s.qty}</td>
-                    <td class="text-center fw-bold text-success">${dlvd}</td>
-                    <td class="text-center fw-bold ${rem>0?'text-danger':''}">${rem}</td>
+                    <td class="text-center fw-bold">${contractQty.toLocaleString()}</td>
+                    <td class="text-center fw-bold text-success">${dlvd.toLocaleString()}</td>
+                    <td class="text-center fw-bold ${rem>0?'text-danger':''}">${rem.toLocaleString()}</td>
                     <td class="fw-bold text-primary">${pct}%</td>
                   </tr>
                 </tfoot>
@@ -2730,7 +2800,132 @@ async function deleteCust(id) {
 }
 
 // =================== STATS ===================
+function switchStatsTab(tab, el) {
+  document.querySelectorAll('#statsTabs .nav-link').forEach(a=>a.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('statsTab-stats').style.display    = tab==='stats'    ? '' : 'none';
+  document.getElementById('statsTab-schedule').style.display = tab==='schedule' ? '' : 'none';
+  if (tab==='schedule') renderSchedule();
+}
+
+function renderSchedule() {
+  const sites = S.data.sites, dlvs = S.data.deliveries;
+
+  // 연도 범위: 입력값 → 자동 범위(납품일/준공일 최소~최대) 순
+  const parseYYYYMM = v => (/^\d{4}-\d{2}/.test(v||'')) ? v.slice(0,7) : '';
+  const parseYear = v => /^\d{4}/.test(v||'') ? +v.slice(0,4) : null;
+  const years = [
+    ...dlvs.map(d=>parseYear(d.date)),
+    ...sites.map(s=>parseYear(s.compDate))
+  ].filter(y=>y);
+  const nowY = new Date().getFullYear();
+  const autoFrom = years.length ? Math.min(...years) : nowY;
+  const autoTo   = years.length ? Math.max(...years) : nowY;
+  const fromEl = document.getElementById('schYearFrom');
+  const toEl   = document.getElementById('schYearTo');
+  if (!fromEl.value) fromEl.value = autoFrom;
+  if (!toEl.value)   toEl.value   = autoTo;
+  let yFrom = +fromEl.value || autoFrom;
+  let yTo   = +toEl.value   || autoTo;
+  if (yFrom > yTo) { [yFrom, yTo] = [yTo, yFrom]; fromEl.value=yFrom; toEl.value=yTo; }
+
+  // 월 목록
+  const months = [];
+  for (let y=yFrom; y<=yTo; y++) for (let m=1; m<=12; m++)
+    months.push({ y, m, key:`${y}-${String(m).padStart(2,'0')}` });
+
+  // 연도 그룹(연도별 span)
+  const yearGroups = [];
+  months.forEach(x=>{
+    const last = yearGroups[yearGroups.length-1];
+    if (last && last.y===x.y) last.count++;
+    else yearGroups.push({ y:x.y, count:1 });
+  });
+
+  // 현장별 월별 납품 합계 (루버 품목만)
+  const siteMonthMap = new Map(); // siteName -> {monthKey -> qty}
+  for (const d of dlvs) {
+    if (!_isLouver(d) || !d.siteName) continue;
+    const mk = parseYYYYMM(d.date);
+    if (!mk) continue;
+    if (!siteMonthMap.has(d.siteName)) siteMonthMap.set(d.siteName, {});
+    const obj = siteMonthMap.get(d.siteName);
+    obj[mk] = (obj[mk]||0) + (d.qty||0);
+  }
+
+  const todayKey = new Date().toISOString().slice(0,7);
+  const sortedSites = [...sites].sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
+  // 같은 이름이 여러 행인지 카운트 (표시용 규격 라벨 필요 여부)
+  const nameCount = {};
+  sortedSites.forEach(s=>{ nameCount[s.name]=(nameCount[s.name]||0)+1; });
+
+  // ===== HTML 빌드 =====
+  let html = '<thead>';
+  html += '<tr>';
+  html += '<th rowspan="2" class="col-frozen c1">현장명</th>';
+  html += '<th rowspan="2" class="col-frozen c2">시공사</th>';
+  html += '<th rowspan="2" class="col-frozen c3">준공일</th>';
+  html += '<th rowspan="2" class="col-frozen c4">총개수</th>';
+  yearGroups.forEach(yg=>{
+    html += `<th colspan="${yg.count}">${String(yg.y).slice(-2)}년</th>`;
+  });
+  html += '</tr>';
+  html += '<tr>';
+  months.forEach(x=>{ html += `<th>${x.m}월</th>`; });
+  html += '</tr>';
+  html += '</thead>';
+
+  html += '<tbody>';
+  sortedSites.forEach(s=>{
+    const mdata = siteMonthMap.get(s.name) || {};
+    const compKey = parseYYYYMM(s.compDate);
+    const siteTotalQty = s.qty || 0;
+    // 규격 라벨 (같은 이름 여러 행일 때만 표시)
+    const sp = (s.specs||[])[0];
+    const specLabel = (nameCount[s.name]>1 && sp && (sp.width||sp.height))
+      ? `<span class="sch-spec">${sp.width||'-'}×${sp.height||'-'}mm</span>` : '';
+    html += '<tr>';
+    html += `<td class="col-frozen c1"><span class="site-link-cell" onclick="openSiteDetail('${s.id}')">${s.name||'-'}</span>${specLabel}</td>`;
+    html += `<td class="col-frozen c2">${s.contractor||'-'}</td>`;
+    html += `<td class="col-frozen c3">${s.compDate||'-'}</td>`;
+    html += `<td class="col-frozen c4">${siteTotalQty.toLocaleString()}</td>`;
+    months.forEach(x=>{
+      const qty = mdata[x.key] || 0;
+      const isComp = compKey === x.key;
+      const isFuture = x.key > todayKey;
+      if (isComp) {
+        html += `<td class="cell-move-in">입주${qty?`<small>${qty.toLocaleString()}</small>`:''}</td>`;
+      } else if (qty>0) {
+        const cls = isFuture ? 'cell-future' : 'cell-delivered';
+        html += `<td class="${cls}">${qty.toLocaleString()}</td>`;
+      } else {
+        html += '<td></td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+
+  // 월별 합계 + 전체 합계
+  html += '<tfoot><tr>';
+  html += '<th class="col-frozen c1" style="text-align:right">월별 합계</th>';
+  html += '<th class="col-frozen c2"></th>';
+  html += '<th class="col-frozen c3"></th>';
+  const grandTotal = dlvs.filter(_isLouver).reduce((s,d)=>s+(d.qty||0),0);
+  html += `<th class="col-frozen c4">${grandTotal.toLocaleString()}</th>`;
+  months.forEach(x=>{
+    let sum = 0;
+    for (const [, m] of siteMonthMap) sum += (m[x.key]||0);
+    html += `<th>${sum ? sum.toLocaleString() : ''}</th>`;
+  });
+  html += '</tr></tfoot>';
+
+  document.getElementById('schTable').innerHTML = html;
+}
+
 function renderStats() {
+  // 탭 초기 상태 (통계 기본, 스케줄은 탭 전환 시 렌더)
+  switchStatsTab('stats', document.querySelector('#statsTabs .nav-link'));
   const sites=S.data.sites, dlvs=S.data.deliveries;
   const totalDlvd=dlvs.reduce((s,d)=>s+d.qty,0);
   const totalCostAll=dlvs.reduce((s,d)=>s+(d.cost||0),0);
