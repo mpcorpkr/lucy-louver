@@ -52,6 +52,8 @@ thead th{background:#f8fafc;font-size:.82rem;font-weight:600;color:#475569;borde
 thead th.sortable{cursor:pointer;user-select:none;transition:background .15s}
 thead th.sortable:hover{background:#e2e8f0}
 .sort-arrow{margin-left:4px;font-size:.75rem;color:var(--lucy);display:inline-block;min-width:10px}
+.site-link{color:var(--lucy);text-decoration:none;font-weight:700;cursor:pointer}
+.site-link:hover{text-decoration:underline;color:var(--lucy-dark)}
 tbody td{font-size:.85rem;vertical-align:middle;padding:10px 12px;border-color:#f1f5f9}
 tbody tr:hover{background:#f8fafc}
 /* Form */
@@ -398,6 +400,22 @@ tbody tr:hover{background:#f8fafc}
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="siteDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 납품 관리 → 현장명 클릭 시 표시되는 납품 상세 내역 Modal -->
+<div class="modal fade" id="dlvSiteDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dlvSiteDetailTitle">납품 상세 내역</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="dlvSiteDetailBody"></div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
       </div>
@@ -1984,10 +2002,11 @@ function renderDeliveryList() {
              : 'bg-primary';
     const typeBadge = `<span class="badge ${bg}" style="font-size:.72rem">${item}</span>`;
     const specCell = d.spec ? `${d.spec}mm` : '-';
+    const siteNameEsc = (d.siteName||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<tr>
       <td class="text-nowrap">${d.date||'-'}</td>
       <td>${typeBadge}</td>
-      <td class="fw-bold">${d.siteName||'-'}</td>
+      <td>${d.siteName?`<a href="#" class="site-link" onclick="event.preventDefault();openDlvSiteDetail('${siteNameEsc}')">${d.siteName}</a>`:'-'}</td>
       <td class="text-nowrap">${specCell}</td>
       <td class="text-muted">-</td>
       <td class="text-center fw-bold">${d.qty||0}</td>
@@ -1999,6 +2018,120 @@ function renderDeliveryList() {
       </td>
     </tr>`;
   }).join('');
+}
+
+// 납품 관리 화면 → 현장명 클릭 시 해당 현장의 납품 상세 내역 모달
+function openDlvSiteDetail(siteName) {
+  const name = String(siteName||'').trim();
+  if (!name) return;
+  const site = S.data.sites.find(s => s.name === name);
+  const dlvs = S.data.deliveries.filter(d => d.siteName === name);
+  // 루버: 날짜 오름차순으로 누적합계 계산 → 표시는 내림차순
+  const louverAsc = dlvs.filter(d => _isLouver(d))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  let cum = 0;
+  louverAsc.forEach(d => { d._cum = (cum += (d.qty||0)); });
+  const louverDesc = [...louverAsc].reverse();
+  const totalLouver = cum;
+  // 마감자재
+  const finishDlvs = dlvs.filter(d => d.item==='SMA셋' || d.item==='BIAS셋')
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const smaSum  = finishDlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
+  const biasSum = finishDlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
+  // 계약 통계
+  const contractQty = site?.qty || 0;
+  const remLouver = contractQty - totalLouver;
+  const pctLouver = contractQty>0 ? Math.min(100, Math.round(totalLouver/contractQty*100)) : 0;
+
+  document.getElementById('dlvSiteDetailTitle').textContent = `${name} 납품 상세 내역`;
+  document.getElementById('dlvSiteDetailBody').innerHTML = `
+    <!-- 요약 정보 -->
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="p-2 rounded text-center" style="background:#f8fafc;border:1px solid #e2e8f0">
+          <div class="text-muted" style="font-size:.78rem">계약수량</div>
+          <div class="fw-bold" style="font-size:1.15rem">${contractQty.toLocaleString()}개</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="p-2 rounded text-center" style="background:#f0fdf4;border:1px solid #bbf7d0">
+          <div class="text-muted" style="font-size:.78rem">루버 납품완료</div>
+          <div class="fw-bold text-success" style="font-size:1.15rem">${totalLouver.toLocaleString()}개</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="p-2 rounded text-center" style="background:${remLouver>0?'#fef2f2':'#f0fdf4'};border:1px solid ${remLouver>0?'#fecaca':'#bbf7d0'}">
+          <div class="text-muted" style="font-size:.78rem">루버 잔여</div>
+          <div class="fw-bold ${remLouver>0?'text-danger':'text-success'}" style="font-size:1.15rem">${remLouver.toLocaleString()}개</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="p-2 rounded text-center" style="background:#eff6ff;border:1px solid #bfdbfe">
+          <div class="text-muted" style="font-size:.78rem">루버 납품율</div>
+          <div class="fw-bold text-primary" style="font-size:1.15rem">${pctLouver}%</div>
+        </div>
+      </div>
+    </div>
+    ${!site ? '<div class="alert alert-warning py-2" style="font-size:.82rem"><i class="bi bi-exclamation-triangle"></i> 현장목록에 등록되지 않은 현장입니다. 계약수량 기준 집계가 없습니다.</div>' : ''}
+
+    <!-- 루버 납품 이력 -->
+    <div class="fw-bold mb-2 text-primary"><i class="bi bi-house-door"></i> 루버 납품 이력 <span class="badge bg-light text-dark ms-1">${louverDesc.length}건</span></div>
+    ${louverDesc.length===0
+      ? '<div class="text-muted text-center py-3 mb-3" style="background:#f8fafc;border-radius:8px">루버 납품 이력이 없습니다.</div>'
+      : `<div class="table-responsive mb-3" style="border:1px solid #e2e8f0;border-radius:8px">
+          <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
+            <thead style="background:#f8fafc">
+              <tr>
+                <th class="text-nowrap">날짜</th>
+                <th>규격</th>
+                <th class="text-center">개수</th>
+                <th class="text-center">누적합계</th>
+              </tr>
+            </thead>
+            <tbody>${louverDesc.map(d=>`<tr>
+              <td class="text-nowrap">${d.date||'-'}</td>
+              <td>${d.spec?`${d.spec}mm`:'-'}</td>
+              <td class="text-center fw-bold">${(d.qty||0).toLocaleString()}개</td>
+              <td class="text-center fw-bold text-primary">${(d._cum||0).toLocaleString()}개</td>
+            </tr>`).join('')}</tbody>
+            <tfoot style="background:#f1f5f9">
+              <tr>
+                <td colspan="2" class="fw-bold text-end">합계</td>
+                <td class="text-center fw-bold text-success">${totalLouver.toLocaleString()}개</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`}
+
+    <!-- 마감자재 납품 이력 (조건부) -->
+    ${finishDlvs.length===0 ? '' : `
+      <div class="fw-bold mb-2 text-success"><i class="bi bi-gear"></i> 마감자재 납품 이력 <span class="badge bg-light text-dark ms-1">${finishDlvs.length}건</span></div>
+      <div class="table-responsive" style="border:1px solid #e2e8f0;border-radius:8px">
+        <table class="table table-sm table-hover mb-0" style="font-size:.85rem">
+          <thead style="background:#f8fafc">
+            <tr>
+              <th class="text-nowrap">날짜</th>
+              <th>품목</th>
+              <th class="text-center">개수</th>
+            </tr>
+          </thead>
+          <tbody>${finishDlvs.map(d=>{
+            const bg = d.item==='SMA셋' ? 'bg-success' : 'bg-warning text-dark';
+            return `<tr>
+              <td class="text-nowrap">${d.date||'-'}</td>
+              <td><span class="badge ${bg}" style="font-size:.72rem">${d.item}</span></td>
+              <td class="text-center fw-bold">${(d.qty||0).toLocaleString()}개</td>
+            </tr>`;
+          }).join('')}</tbody>
+          <tfoot style="background:#f1f5f9">
+            ${smaSum>0?`<tr><td class="fw-bold text-end">합계</td><td><span class="badge bg-success" style="font-size:.72rem">SMA셋</span></td><td class="text-center fw-bold">${smaSum.toLocaleString()}개</td></tr>`:''}
+            ${biasSum>0?`<tr><td class="fw-bold text-end">합계</td><td><span class="badge bg-warning text-dark" style="font-size:.72rem">BIAS셋</span></td><td class="text-center fw-bold">${biasSum.toLocaleString()}개</td></tr>`:''}
+          </tfoot>
+        </table>
+      </div>`}`;
+
+  new bootstrap.Modal(document.getElementById('dlvSiteDetailModal')).show();
 }
 
 function openDlvModal(id) {
