@@ -85,6 +85,11 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table td.cell-delivered.cur-month{background:#86efac !important}
 .schedule-table td.cell-future.cur-month{background:#bae6fd !important}
 .schedule-table tfoot th.cur-month{background:#fde68a !important;color:#92400e}
+/* ===== 컬럼 너비 리사이즈 ===== */
+thead th.resize-target{position:relative}
+.col-resizer{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:11}
+.col-resizer:hover{background:linear-gradient(90deg,transparent,rgba(37,99,235,.5))}
+body.col-resizing,body.col-resizing *{cursor:col-resize !important;user-select:none !important}
 /* ===== 월별 마감 내역서 (인쇄 / PDF) ===== */
 .invoice-body h3{font-weight:800;letter-spacing:-.5px}
 .invoice-body .table{font-size:.85rem}
@@ -837,6 +842,7 @@ function showPage(id) {
     stats: renderStats
   };
   if (renders[id]) renders[id]();
+  setTimeout(enableAllTableResize, 0);
 }
 
 // =================== MOBILE ===================
@@ -938,10 +944,11 @@ function parseDate(v) {
       return `${d.getUTCFullYear()}-${_pad2(d.getUTCMonth()+1)}-${_pad2(d.getUTCDate())}`;
     }
   }
-  const s = String(v).trim();
+  const s = String(v).trim().replace(/\u00A0/g,' '); // non-breaking space → 일반 공백
   if (!s) return '';
-  // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD / 2027. 07. 01 / 2027.7.1.
-  const m = s.match(/^(\d{4})[\s\-\/.]\s*(\d{1,2})[\s\-\/.]\s*(\d{1,2})\.?$/);
+  // YYYY{sep}MM{sep}DD 에서 sep은 하이픈/슬래시/점/공백 조합 (연속 허용)
+  // 예: "2025-10-13", "2025/10/13", "2025.10.13", "2025. 10. 13", "2025 . 10 . 13"
+  const m = s.match(/^(\d{4})[\s\-\/.]+(\d{1,2})[\s\-\/.]+(\d{1,2})[\s\-\/.]*$/);
   if (m) return `${m[1]}-${_pad2(m[2])}-${_pad2(m[3])}`;
   // 영문 형식 (July 1, 2027 / Jul 1 2027 등)
   const d2 = new Date(s);
@@ -2849,6 +2856,7 @@ function switchStatsTab(tab, el) {
   document.getElementById('statsTab-invoice').style.display  = tab==='invoice'  ? '' : 'none';
   if (tab==='schedule') renderSchedule();
   if (tab==='invoice')  renderInvoice();
+  setTimeout(enableAllTableResize, 0);
 }
 
 // 연도/월 콤보박스 초기화 (납품일+준공일에서 연도 범위 추출)
@@ -2894,6 +2902,12 @@ function setSchSort(col) {
 
 function renderSchedule() {
   const sites = S.data.sites, dlvs = S.data.deliveries;
+  const tableEl = document.getElementById('schTable');
+  // 1) 데이터 로드 여부 체크
+  if (!sites.length && !dlvs.length) {
+    tableEl.innerHTML = `<thead><tr><th class="text-center py-4" style="color:#94a3b8">구글시트에서 데이터를 불러오는 중입니다. Google 연결을 확인해주세요.</th></tr></thead>`;
+    return;
+  }
   populateStatYearMonth();
 
   let yFrom = +document.getElementById('schYearFrom').value;
@@ -2938,6 +2952,17 @@ function renderSchedule() {
   }
 
   const todayKey = new Date().toISOString().slice(0,7);
+
+  // 기간 내 납품 총합 (진단용)
+  let periodTotal = 0;
+  for (const [, mdata] of siteMonthMap) {
+    for (const x of months) periodTotal += (mdata[x.key] || 0);
+  }
+  // 사이트는 있지만 기간 내 납품이 전혀 없을 때 → 빈 상태 표시 (표 구조는 유지)
+  if (!sites.length) {
+    tableEl.innerHTML = `<thead><tr><th class="text-center py-4" style="color:#94a3b8">등록된 현장이 없습니다.</th></tr></thead>`;
+    return;
+  }
 
   // ===== 정렬 =====
   const schSort = S.schSort || {col:'name', dir:'asc'};
@@ -3036,6 +3061,33 @@ function renderSchedule() {
   html += '</tr></tfoot>';
 
   document.getElementById('schTable').innerHTML = html;
+
+  // ===== 진단 배너 =====
+  // 표 상단에 현장 수 / 기간 내 납품 건수·개수 표시 (사용자가 데이터 로드 여부 즉시 확인)
+  let bannerEl = document.getElementById('schDiagBanner');
+  if (!bannerEl) {
+    bannerEl = document.createElement('div');
+    bannerEl.id = 'schDiagBanner';
+    bannerEl.className = 'mb-2';
+    bannerEl.style.fontSize = '.82rem';
+    tableEl.closest('.card')?.parentNode.insertBefore(bannerEl, tableEl.closest('.card'));
+  }
+  const inPeriodCount = dlvs.filter(d=>{
+    if (!d.date) return false;
+    const mk = parseYYYYMM(d.date);
+    return mk && mk >= months[0]?.key && mk <= months[months.length-1]?.key;
+  }).length;
+  if (periodTotal === 0) {
+    bannerEl.innerHTML = `<div class="alert alert-warning py-2 mb-0">
+      <i class="bi bi-exclamation-triangle"></i> 해당 기간에 납품 데이터가 없습니다.
+      <small class="ms-2 text-muted">(전체 납품 ${dlvs.length}건 · 현장 ${sites.length}개 · 기간 ${months[0]?.key||'-'} ~ ${months[months.length-1]?.key||'-'})</small>
+    </div>`;
+  } else {
+    bannerEl.innerHTML = `<div class="text-muted">
+      <i class="bi bi-info-circle"></i> 현장 ${sites.length}개 · 기간 내 납품 ${inPeriodCount}건 · 총 ${periodTotal.toLocaleString()}개
+    </div>`;
+  }
+  setTimeout(enableAllTableResize, 0);
 }
 
 // ===== 월별 마감 내역서 =====
@@ -3108,9 +3160,12 @@ function renderInvoice() {
           <h6 class="fw-bold mb-2">📋 현장별 납품 내역 <span class="badge bg-light text-dark ms-1">${monthDlvs.length}건</span></h6>
           <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
             <thead><tr>
-              <th>현장명</th><th>규격</th><th>품목</th><th>납품일</th>
-              <th class="text-end">개수</th>
-              ${canPrice?'<th class="text-end">청구금액</th>':''}
+              <th style="width:200px">현장명</th>
+              <th style="width:150px">규격</th>
+              <th style="width:80px">품목</th>
+              <th style="width:120px">납품일</th>
+              <th class="text-end" style="width:80px">개수</th>
+              ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
             </tr></thead>
             <tbody>${rowHtml}</tbody>
           </table></div>
@@ -3119,11 +3174,11 @@ function renderInvoice() {
           <h6 class="fw-bold mb-2">🏢 현장별 합계</h6>
           <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
             <thead><tr>
-              <th>현장명</th>
-              <th class="text-end">루버</th>
-              <th class="text-end">SMA셋</th>
-              <th class="text-end">BIAS셋</th>
-              ${canPrice?'<th class="text-end">청구금액</th>':''}
+              <th style="width:300px">현장명</th>
+              <th class="text-end" style="width:100px">루버</th>
+              <th class="text-end" style="width:100px">SMA셋</th>
+              <th class="text-end" style="width:100px">BIAS셋</th>
+              ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
             </tr></thead>
             <tbody>${summaryRows}</tbody>
           </table></div>
@@ -3141,6 +3196,7 @@ function renderInvoice() {
           </div>
         </div>`}
     </div>`;
+  setTimeout(enableAllTableResize, 0);
 }
 
 function printInvoice() {
@@ -3258,6 +3314,85 @@ function colLetter(n) {
   let s=''; n=Math.max(0,n|0);
   do { s = String.fromCharCode(65 + (n%26)) + s; n = Math.floor(n/26) - 1; } while (n>=0);
   return s;
+}
+
+// ===== 컬럼 너비 리사이즈 =====
+// 각 th 오른쪽 경계에 핸들을 붙여 드래그 리사이즈 / 더블클릭 auto-fit 지원
+function enableColumnResize(tableEl) {
+  if (!tableEl) return;
+  tableEl.querySelectorAll('thead > tr > th').forEach(th => {
+    if (th.querySelector(':scope > .col-resizer')) return;
+    if ((th.colSpan||1) > 1) return; // colspan 셀은 리사이즈 대상에서 제외
+    th.classList.add('resize-target');
+    const handle = document.createElement('div');
+    handle.className = 'col-resizer';
+    handle.addEventListener('mousedown', e => _startColResize(e, th));
+    handle.addEventListener('click',     e => e.stopPropagation());
+    handle.addEventListener('dblclick',  e => _autoFitCol(e, th, tableEl));
+    th.appendChild(handle);
+  });
+}
+function enableAllTableResize() {
+  document.querySelectorAll('#main table, .modal.show table').forEach(enableColumnResize);
+}
+function _startColResize(e, th) {
+  e.preventDefault(); e.stopPropagation();
+  const startX = e.clientX;
+  const startW = th.offsetWidth;
+  const isFrozen = th.classList.contains('col-frozen');
+  const tableEl = th.closest('table');
+  document.body.classList.add('col-resizing');
+  const onMove = ev => {
+    const newW = Math.max(40, startW + (ev.clientX - startX));
+    th.style.width    = newW + 'px';
+    th.style.minWidth = newW + 'px';
+    if (isFrozen) _updateFrozenOffsets(tableEl);
+  };
+  const onUp = () => {
+    document.body.classList.remove('col-resizing');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
+}
+function _autoFitCol(e, th, tableEl) {
+  e.preventDefault(); e.stopPropagation();
+  // colspan 누적으로 해당 th의 실제 컬럼 인덱스 계산
+  let idx = 0, sib = th.previousElementSibling;
+  while (sib) { idx += (sib.colSpan||1); sib = sib.previousElementSibling; }
+  // 일시적으로 폭 제약 해제 후 scrollWidth 측정
+  const saveW = th.style.width, saveMin = th.style.minWidth;
+  th.style.width = ''; th.style.minWidth = '';
+  let maxW = th.scrollWidth;
+  tableEl.querySelectorAll('tr').forEach(tr => {
+    let col = 0;
+    for (const cell of tr.children) {
+      const span = cell.colSpan || 1;
+      if (col <= idx && idx < col + span) {
+        maxW = Math.max(maxW, cell.scrollWidth);
+        break;
+      }
+      col += span;
+    }
+  });
+  const newW = Math.max(40, Math.min(600, maxW + 24));
+  th.style.width = newW + 'px';
+  th.style.minWidth = newW + 'px';
+  if (th.classList.contains('col-frozen')) _updateFrozenOffsets(tableEl);
+}
+// sticky 좌측 고정 컬럼의 left 오프셋을 현재 폭 기준으로 재계산
+function _updateFrozenOffsets(tableEl) {
+  const classes = ['c1','c2','c3','c4'];
+  const firstRow = tableEl.querySelector('thead tr');
+  if (!firstRow) return;
+  let left = 0;
+  classes.forEach(cls => {
+    const header = firstRow.querySelector(`.${cls}`);
+    const w = header ? header.offsetWidth : 0;
+    tableEl.querySelectorAll(`.${cls}`).forEach(c => { c.style.left = left + 'px'; });
+    left += w;
+  });
 }
 
 // 1~31일 옵션 채우기
