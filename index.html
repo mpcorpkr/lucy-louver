@@ -1000,35 +1000,61 @@ const _isLouver = d => {
   const t = d.item || d.type || '루버';
   return t === '루버' || t === '목업'; // 목업은 레거시 호환
 };
+// 현장 매칭: 같은 이름이 여러 행이면 (행 개수 ≥ 2) 가로값까지 일치해야 매칭
+// 같은 이름이 1행뿐이면 현장명만으로 매칭 (기존 방식 유지)
+function _siteMatcher(siteId) {
+  const site = S.data.sites.find(s=>s.id===siteId);
+  if (!site) return { site:null, match:()=>false };
+  const sameName = S.data.sites.filter(s=>s.name===site.name);
+  const useWidth = sameName.length > 1;
+  const widths = useWidth
+    ? (site.specs||[]).map(sp=>parseInt(String(sp.width||''),10)).filter(w=>w>0)
+    : [];
+  return {
+    site,
+    match: d => {
+      if (d.siteName !== site.name) return false;
+      if (!useWidth) return true;
+      const dW = parseInt(String(d.specW||''),10);
+      return widths.includes(dW);
+    }
+  };
+}
 function totalDelivered(siteId) {
+  const {site, match} = _siteMatcher(siteId);
+  if (!site) return 0;
   return S.data.deliveries
-    .filter(d=>d.siteId===siteId && _isLouver(d))
+    .filter(d => _isLouver(d) && match(d))
     .reduce((s,d)=>s+(d.qty||0),0);
 }
-// 현장명(= siteId) + 가로(width) 일치로 규격별 납품완료 합산.
-// 문자열 전체 "가로×세로" 비교 대신 숫자 가로값만 비교해 포맷 불일치를 회피.
+// 규격별 납품: 현장명 + 가로(width) 숫자 일치 (행 중복과 무관하게 항상 가로 기준)
 function totalDeliveredBySpec(siteId, specKey) {
+  const site = S.data.sites.find(s=>s.id===siteId);
+  if (!site) return 0;
   const targetW = parseInt(String(specKey||'').split('×')[0]||'', 10);
   if (!targetW) return 0;
   return S.data.deliveries
     .filter(d=>{
-      if (d.siteId !== siteId || !_isLouver(d)) return false;
+      if (d.siteName !== site.name || !_isLouver(d)) return false;
       const dW = parseInt(String(d.specW||''), 10);
       return dW === targetW;
     })
     .reduce((s,d)=>s+(d.qty||0),0);
 }
 function remaining(site) { return site.qty - totalDelivered(site.id); }
-// 마감자재 집계: SMA셋/BIAS셋 합계 + SMA 필요(=BIAS셋) / 완료(=SMA셋) / 잔여
-// 마감 진행율 = SMA셋 납품합계 ÷ 루버 계약수량 × 100 (루버 1개당 SMA셋 1개 필요)
+// 마감자재 집계: 현장명 + 조건부 가로값 기반 매칭
+// 마감 진행율 = SMA셋 ÷ 루버 계약수량 × 100 (루버 1개당 SMA셋 1개 필요)
 function finishTotals(siteId) {
-  const site = S.data.sites.find(s=>s.id===siteId);
-  const contractQty = site?.qty || 0;
-  const dlvs = S.data.deliveries.filter(d=>d.siteId===siteId);
+  const {site, match} = _siteMatcher(siteId);
+  if (!site) {
+    return { count:0, hasFinish:false, smaSet:0, biasSet:0, smaStandalone:0,
+             smaRequired:0, smaDelivered:0, smaRemaining:0, finishTotal:0, finishPct:0 };
+  }
+  const contractQty = site.qty || 0;
+  const dlvs = S.data.deliveries.filter(match);
   const smaSet  = dlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
   const biasSet = dlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
   const count   = dlvs.filter(d=>d.item==='SMA셋' || d.item==='BIAS셋').length;
-  // 분모 = 루버 계약수량, 소수 1자리까지 (예: 1/1014 → 0.1%)
   const finishTotal = contractQty;
   const finishPct = contractQty>0 ? Math.min(100, Math.round(smaSet/contractQty*1000)/10) : 0;
   return {
