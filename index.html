@@ -1020,14 +1020,17 @@ function totalDeliveredBySpec(siteId, specKey) {
 }
 function remaining(site) { return site.qty - totalDelivered(site.id); }
 // 마감자재 집계: SMA셋/BIAS셋 합계 + SMA 필요(=BIAS셋) / 완료(=SMA셋) / 잔여
-// 마감율 = SMA셋 / (SMA셋 + BIAS셋) × 100  (유저 정의 공식)
+// 마감 진행율 = SMA셋 납품합계 ÷ 루버 계약수량 × 100 (루버 1개당 SMA셋 1개 필요)
 function finishTotals(siteId) {
+  const site = S.data.sites.find(s=>s.id===siteId);
+  const contractQty = site?.qty || 0;
   const dlvs = S.data.deliveries.filter(d=>d.siteId===siteId);
   const smaSet  = dlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
   const biasSet = dlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
   const count   = dlvs.filter(d=>d.item==='SMA셋' || d.item==='BIAS셋').length;
-  const finishTotal = smaSet + biasSet;
-  const finishPct = finishTotal>0 ? Math.min(100, Math.round(smaSet/finishTotal*100)) : 0;
+  // 분모 = 루버 계약수량, 소수 1자리까지 (예: 1/1014 → 0.1%)
+  const finishTotal = contractQty;
+  const finishPct = contractQty>0 ? Math.min(100, Math.round(smaSet/contractQty*1000)/10) : 0;
   return {
     count, hasFinish: count>0,
     smaSet, biasSet, smaStandalone:0,
@@ -1122,7 +1125,7 @@ function renderDash강철() {
       <div class="col-lg-8">
         <div class="widget">
           <div class="widget-title">현장별 납품 진행률 <small class="text-muted fw-normal">· 잔여 많은 순 · 완료 제외</small></div>
-          <canvas id="dashSiteChart" height="130"></canvas>
+          <div id="dashSiteChartWrap"><canvas id="dashSiteChart" height="130"></canvas></div>
           <div id="dashSiteTotals" class="mt-2 pt-2 d-flex justify-content-around flex-wrap gap-2" style="border-top:1px solid #e2e8f0;font-size:.85rem"></div>
         </div>
       </div>
@@ -1177,7 +1180,23 @@ function renderDash강철() {
       })
       .sort((a,b)=>b.rem-a.rem);
     const cs = allRows.slice(0,14);
-    const labels = cs.map(r=>r.s.name.length>8 ? r.s.name.slice(0,8)+'…' : r.s.name);
+    const isMobile = window.innerWidth <= 768;
+    const maxLen = isMobile ? 15 : 8;
+    const labels = cs.map(r => r.s.name.length>maxLen ? r.s.name.slice(0,maxLen)+'…' : r.s.name);
+
+    // 모바일: 캔버스 높이를 행 수 × 50px로 확장하고 wrapper는 스크롤 가능
+    const wrap = document.getElementById('dashSiteChartWrap');
+    if (isMobile) {
+      if (wrap) { wrap.style.maxHeight='65vh'; wrap.style.overflowY='auto'; wrap.style.overflowX='hidden'; }
+      ctx.style.height = Math.max(200, cs.length * 50) + 'px';
+      ctx.style.width = '100%';
+      ctx.removeAttribute('height');
+    } else {
+      if (wrap) { wrap.style.maxHeight=''; wrap.style.overflowY=''; wrap.style.overflowX=''; }
+      ctx.style.height = '';
+      ctx.style.width = '';
+      ctx.setAttribute('height', '130');
+    }
 
     S.charts.dashSite = new Chart(ctx,{
       type:'bar',
@@ -1186,7 +1205,10 @@ function renderDash강철() {
           datalabels:{display:false}},
         {label:'잔여 R (Remaining)',     data:cs.map(r=>r.rem),  backgroundColor:'rgba(239,68,68,.55)', borderRadius:4,
           datalabels:{
-            anchor:'end', align:'top', offset:4, clamp:true,
+            anchor:'end',
+            align: isMobile ? 'end' : 'top',
+            offset: isMobile ? 6 : 4,
+            clamp:true,
             color:'#1e293b', font:{size:10, weight:'600'}, textAlign:'center',
             formatter:(_v, ctxArg)=>{
               const r = cs[ctxArg.dataIndex];
@@ -1200,7 +1222,10 @@ function renderDash강철() {
         },
       ]},
       options:{
-        layout:{padding:{top:52}},
+        indexAxis: isMobile ? 'y' : 'x',
+        maintainAspectRatio: !isMobile,
+        responsive: true,
+        layout: { padding: isMobile ? {right:110} : {top:52} },
         plugins:{
           legend:{
             position:'top',
@@ -1238,7 +1263,13 @@ function renderDash강철() {
           },
           datalabels:{display:true}
         },
-        scales:{x:{stacked:true}, y:{stacked:true, beginAtZero:true}}
+        scales: isMobile ? {
+          x: { stacked:true, beginAtZero:true, ticks:{font:{size:10}} },
+          y: { stacked:true, ticks:{autoSkip:false, font:{size:11}} }
+        } : {
+          x: { stacked:true },
+          y: { stacked:true, beginAtZero:true }
+        }
       },
       plugins: (typeof ChartDataLabels!=='undefined') ? [ChartDataLabels] : []
     });
@@ -1659,7 +1690,7 @@ function renderSiteList() {
           <div class="progress mt-1" style="height:7px"><div class="progress-bar bg-success" style="width:${ft.finishPct}%;transition:width .4s"></div></div>
           <div class="d-flex justify-content-between" style="font-size:.72rem;line-height:1.4">
             <span class="fw-bold text-success">🟢 마감 ${ft.finishPct}%</span>
-            <span class="text-muted">${ft.smaSet}/${ft.finishTotal}세트</span>
+            <span class="text-muted">${ft.smaSet.toLocaleString()}/${ft.finishTotal.toLocaleString()}세트</span>
           </div>
         ` : ''}
       </td>
@@ -1765,7 +1796,7 @@ function openSiteDetail(id) {
       <div class="col-12"><hr>
         <div class="d-flex justify-content-between align-items-center mb-2">
           <div class="fw-bold text-success" style="font-size:1rem"><i class="bi bi-gear"></i> 마감자재 납품 현황</div>
-          <span class="fw-bold text-success" style="font-size:1.05rem">🟢 ${ft.finishPct}% <small class="text-muted">(${ft.smaSet}/${ft.finishTotal}세트)</small></span>
+          <span class="fw-bold text-success" style="font-size:1.05rem">🟢 ${ft.finishPct}% <small class="text-muted">(${ft.smaSet.toLocaleString()}/${ft.finishTotal.toLocaleString()}세트)</small></span>
         </div>
         <div class="progress mb-3" style="height:10px">
           <div class="progress-bar bg-success" style="width:${ft.finishPct}%;transition:width .4s"></div>
@@ -2822,6 +2853,20 @@ function toast(msg, type='') {
 }
 
 // =================== START ===================
+// 768px 경계를 넘을 때만 대시보드 재렌더 (모바일↔데스크탑 전환 시 차트 방향 재구성)
+let _lastIsMobile = window.innerWidth <= 768;
+let _dashResizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_dashResizeTimer);
+  _dashResizeTimer = setTimeout(() => {
+    const now = window.innerWidth <= 768;
+    if (now !== _lastIsMobile) {
+      _lastIsMobile = now;
+      if (S.user && S.currentPage === 'dashboard') renderDashboard();
+    }
+  }, 250);
+});
+
 initLogin();
 </script>
 </body>
