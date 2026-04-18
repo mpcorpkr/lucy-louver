@@ -73,11 +73,8 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table tbody tr.status-active td{background:#fef3c7 !important}
 .schedule-table tbody tr.status-sample td{background:#fef9c3 !important}
 .schedule-table tbody tr.status-done   td{background:#e5e7eb !important;color:#6b7280}
-/* 셀 상태 */
-.schedule-table tbody tr td.cell-delivered{background:#fff !important;color:#0f172a;font-weight:700}
-.schedule-table tbody tr td.cell-future{color:#2563eb;font-weight:700}
-.schedule-table tbody tr td.cell-move-in{background:#0f172a !important;color:#fff;font-weight:700;font-size:.72rem;line-height:1.1}
-.schedule-table .cell-move-in small{display:block;opacity:.75;font-weight:400}
+/* 셀 상태 - 납품 있는 셀: 초록색 배경 + 검정 숫자 볼드 */
+.schedule-table tbody tr td.cell-delivered{background:#86efac !important;color:#000 !important;font-weight:700}
 .schedule-table .site-link-cell{color:var(--lucy);cursor:pointer;font-weight:700}
 .schedule-table .site-link-cell:hover{text-decoration:underline;color:var(--lucy-dark)}
 .schedule-table .sch-spec{font-size:.7rem;color:#94a3b8;display:block}
@@ -86,9 +83,8 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table .sch-arrow{margin-left:2px;font-size:.7rem;color:var(--lucy);display:inline-block;min-width:8px}
 .schedule-table thead th.cur-month{background:#fde68a !important;color:#92400e;font-weight:700}
 .schedule-table thead th.cur-month .sch-arrow{color:#92400e}
-.schedule-table td.cur-month{background:#fef3c7}
-.schedule-table td.cell-delivered.cur-month{background:#fef3c7 !important}
-.schedule-table td.cell-future.cur-month{background:#fef3c7 !important}
+.schedule-table td.cur-month{background:#fde68a}
+.schedule-table tbody tr td.cell-delivered.cur-month{background:#86efac !important}
 /* 월별 합계 행 (tfoot 하단 고정, 연한 노란색) */
 .schedule-table tfoot th{position:sticky;bottom:0;background:#fef3c7;color:#475569;font-weight:700;text-align:center;z-index:7;border:1px solid #e2e8f0;border-top:2px solid #f59e0b;padding:6px 8px;box-sizing:border-box;height:34px}
 .schedule-table tfoot th.col-frozen{z-index:9;background:#fde68a;left:0}
@@ -1136,7 +1132,9 @@ const _isLouver = d => {
 function _siteMatcher(siteId) {
   const site = S.data.sites.find(s=>s.id===siteId);
   if (!site) return { site:null, match:()=>false };
-  const sameName = S.data.sites.filter(s=>s.name===site.name);
+  const norm = s => String(s||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+  const siteKey = norm(site.name);
+  const sameName = S.data.sites.filter(s=>norm(s.name)===siteKey);
   const useWidth = sameName.length > 1;
   const widths = useWidth
     ? (site.specs||[]).map(sp=>parseInt(String(sp.width||''),10)).filter(w=>w>0)
@@ -1144,7 +1142,7 @@ function _siteMatcher(siteId) {
   return {
     site,
     match: d => {
-      if (d.siteName !== site.name) return false;
+      if (norm(d.siteName) !== siteKey) return false;
       if (!useWidth) return true;
       const dW = parseInt(String(d.specW||''),10);
       return widths.includes(dW);
@@ -3030,22 +3028,18 @@ function renderSchedule() {
     else yearGroups.push({ y:x.y, count:1 });
   });
 
-  // 현장 row별로 매칭 규칙(_siteMatcher)을 적용해 월별 납품 + 전년도납품합 집계
-  // 같은 이름의 여러 행은 가로값으로 구분 (기존 _siteMatcher 로직 재사용)
-  const siteData = new Map(); // siteId -> { perMonth:{mk:qty}, prevYear }
+  // 현장 row별로 월별 납품 집계 (매칭은 _siteMatcher에서 대소문자/공백 정규화)
+  const siteData = new Map(); // siteId -> { perMonth:{mk:qty} }
   for (const s of sites) {
     const {match} = _siteMatcher(s.id);
     const perMonth = {};
-    let prevYear = 0;
     for (const d of dlvs) {
       if (!_isLouver(d) || !match(d)) continue;
       const mk = parseYYYYMM(d.date);
       if (!mk) continue;
-      const y = +mk.slice(0,4);
-      if (y < yFrom) prevYear += (d.qty||0);
       perMonth[mk] = (perMonth[mk]||0) + (d.qty||0);
     }
-    siteData.set(s.id, { perMonth, prevYear });
+    siteData.set(s.id, { perMonth });
   }
 
   const todayKey = new Date().toISOString().slice(0,7);
@@ -3137,8 +3131,7 @@ function renderSchedule() {
   html += '<tbody>';
   groups.forEach(group=>{
     group.rows.forEach((s, idx)=>{
-      const sd = siteData.get(s.id) || {perMonth:{}, prevYear:0};
-      const compKey = parseYYYYMM(s.compDate);
+      const sd = siteData.get(s.id) || {perMonth:{}};
       const statusCls = statusToCls(s.status);
       // 규격: 가로×세로 항상 표시
       const sp = (s.specs||[])[0];
@@ -3156,17 +3149,12 @@ function renderSchedule() {
       html += `<td class="col-frozen c5">${(s.qty||0).toLocaleString()}</td>`;
       months.forEach(x=>{
         const qty = sd.perMonth[x.key] || 0;
-        const isComp = compKey === x.key;
-        const isFuture = x.key > todayKey;
         const isCur = x.key === todayKey;
-        const curCls = isCur ? ' cur-month' : '';
-        if (isComp) {
-          html += `<td class="cell-move-in${curCls}">입주${qty?`<small>${qty.toLocaleString()}</small>`:''}</td>`;
-        } else if (qty>0) {
-          const cls = isFuture ? 'cell-future' : 'cell-delivered';
-          html += `<td class="${cls}${curCls}">${qty.toLocaleString()}</td>`;
+        if (qty > 0) {
+          const curCls = isCur ? ' cur-month' : '';
+          html += `<td class="cell-delivered${curCls}">${qty.toLocaleString()}</td>`;
         } else {
-          html += `<td class="${curCls.trim()}"></td>`;
+          html += isCur ? '<td class="cur-month"></td>' : '<td></td>';
         }
       });
       html += '</tr>';
