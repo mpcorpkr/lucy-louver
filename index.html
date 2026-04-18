@@ -1003,8 +1003,10 @@ function mkSite(r, i) {
   const totalQty = specs.reduce((s, sp) => s + sp.qty, 0);
   return {
     _row:rowNum, id:String(rowNum),
-    name:String(r[0]||''), contractor:String(r[1]||''), buyer:String(r[2]||''),
-    louverType:String(r[3]||''),
+    name:String(r[0]||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim(),
+    contractor:String(r[1]||'').trim(),
+    buyer:String(r[2]||'').trim(),
+    louverType:String(r[3]||'').trim(),
     qty: totalQty,
     ...(S.perm.canPrice ? { unitPrice:+r[5]||0 } : {}),
     specs,
@@ -1030,7 +1032,7 @@ function mkDelivery(r, i, colMap, siteByName) {
     }
     return undefined;
   };
-  const siteName = String(get('현장명')||'').trim();
+  const siteName = String(get('현장명')||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
   const site = siteByName ? siteByName[siteName] : null;
   const itemRaw = String(get('품목')||'').trim();
   const item = itemRaw === '무전원 자동루버' ? '루버' : (itemRaw || '루버');
@@ -3186,6 +3188,37 @@ function renderSchedule() {
 
   document.getElementById('schTable').innerHTML = html;
 
+  // ===== 헤더 2행 sticky top 동적 보정 =====
+  // row1 실제 렌더 높이를 측정해 row2의 top을 정확히 맞춤 (갭 방지)
+  requestAnimationFrame(()=>{
+    const tbl = document.getElementById('schTable');
+    const row1 = tbl?.querySelector('thead tr:first-child');
+    if (!row1) return;
+    const h1 = row1.getBoundingClientRect().height;
+    tbl.querySelectorAll('thead tr:nth-child(2) > th').forEach(th=>{
+      th.style.top = h1 + 'px';
+    });
+  });
+
+  // ===== 콘솔 진단 =====
+  try {
+    console.groupCollapsed('[renderSchedule 진단]');
+    console.log('납품이력 날짜 샘플 5개:', dlvs.slice(0,5).map(d=>({
+      _row:d._row, 원본_연월일:d.date, 현장명:d.siteName, 품목:d.item, 가로:d.specW, 개수:d.qty
+    })));
+    const kdTest = (n)=>n && n.includes('검단') && n.includes('롯데');
+    const kdDlvs = dlvs.filter(d=>kdTest(d.siteName));
+    const kdSite = sites.filter(s=>kdTest(s.name));
+    console.log(`검단 롯데 현장: ${kdSite.length}건`, kdSite.map(s=>({id:s.id, name:`"${s.name}"`, qty:s.qty, compDate:s.compDate})));
+    console.log(`검단 롯데 납품: ${kdDlvs.length}건`, kdDlvs.map(d=>({date:d.date, siteName:`"${d.siteName}"`, qty:d.qty, item:d.item})));
+    kdSite.forEach(s=>{
+      const sd = siteData.get(s.id);
+      console.log(`  [${s.name}] 월별 집계:`, sd?.perMonth||{}, `전년도합=${sd?.prevYear||0}`);
+    });
+    console.log(`전체 기간 집계: 현장 ${sites.length} · 기간 ${months[0]?.key}~${months[months.length-1]?.key} · 총 ${periodTotal.toLocaleString()}개`);
+    console.groupEnd();
+  } catch(e){ console.warn('진단 로그 실패:', e); }
+
   // ===== 진단 배너 =====
   // 표 상단에 현장 수 / 기간 내 납품 건수·개수 표시 (사용자가 데이터 로드 여부 즉시 확인)
   let bannerEl = document.getElementById('schDiagBanner');
@@ -3215,6 +3248,21 @@ function renderSchedule() {
 }
 
 // ===== 월별 마감 내역서 =====
+function setInvSummarySort(col) {
+  const cur = S.invSummarySort || {col:'louver', dir:'desc'};
+  if (cur.col === col) cur.dir = cur.dir==='asc' ? 'desc' : 'asc';
+  else { cur.col = col; cur.dir = (col==='name') ? 'asc' : 'desc'; }
+  S.invSummarySort = cur;
+  renderInvoice();
+}
+function setInvDetailSort(col) {
+  const cur = S.invDetailSort || {col:'date', dir:'asc'};
+  if (cur.col === col) cur.dir = cur.dir==='asc' ? 'desc' : 'asc';
+  else { cur.col = col; cur.dir = (col==='name'||col==='item'||col==='date'||col==='spec') ? 'asc' : 'desc'; }
+  S.invDetailSort = cur;
+  renderInvoice();
+}
+
 function renderInvoice() {
   populateStatYearMonth();
   const y = +document.getElementById('invYear').value;
@@ -3222,34 +3270,58 @@ function renderInvoice() {
   const body = document.getElementById('invoiceBody');
   if (!y || !m) { body.innerHTML=''; return; }
   const monthKey = `${y}-${String(m).padStart(2,'0')}`;
-  const monthDlvs = S.data.deliveries
-    .filter(d=>d.date && d.date.startsWith(monthKey))
-    .sort((a,b)=>{
-      const s = (a.siteName||'').localeCompare(b.siteName||'','ko');
-      if (s!==0) return s;
-      const dt = (a.date||'').localeCompare(b.date||'');
-      if (dt!==0) return dt;
-      return (a.specW||'').localeCompare(b.specW||'');
-    });
-
   const canPrice = !!S.perm.canPrice;
   const sitesByName = {}; S.data.sites.forEach(s=>{ if(!sitesByName[s.name]) sitesByName[s.name] = s; });
 
-  // 집계
+  const monthDlvs = S.data.deliveries.filter(d=>d.date && d.date.startsWith(monthKey));
+
+  // 각 납품에 청구금액 미리 계산
+  monthDlvs.forEach(d=>{
+    const item = d.item || '루버';
+    const site = sitesByName[d.siteName];
+    d._amt = (canPrice && item==='루버' && site) ? (d.qty*(site.unitPrice||0)) : 0;
+  });
+
+  // 집계 (정렬 전에 한 번만)
   let totalLouver=0, totalSmaSet=0, totalBias=0, totalAmt=0;
   const summary = {}; // siteName → {louver, smaSet, biasSet, amt}
+  monthDlvs.forEach(d=>{
+    const item = d.item || '루버';
+    if (item==='루버') totalLouver += d.qty;
+    else if (item==='SMA셋') totalSmaSet += d.qty;
+    else if (item==='BIAS셋') totalBias += d.qty;
+    if (!summary[d.siteName]) summary[d.siteName] = {louver:0, smaSet:0, biasSet:0, amt:0};
+    if (item==='루버') summary[d.siteName].louver += d.qty;
+    else if (item==='SMA셋') summary[d.siteName].smaSet += d.qty;
+    else if (item==='BIAS셋') summary[d.siteName].biasSet += d.qty;
+    summary[d.siteName].amt += d._amt;
+    totalAmt += d._amt;
+  });
+
+  // ===== 현장별 납품 내역 정렬 =====
+  const detSort = S.invDetailSort || {col:'date', dir:'asc'};
+  const dMult = detSort.dir==='asc' ? 1 : -1;
+  monthDlvs.sort((a,b)=>{
+    const c = detSort.col;
+    if (c==='name') return (a.siteName||'').localeCompare(b.siteName||'','ko') * dMult;
+    if (c==='item') return (a.item||'').localeCompare(b.item||'','ko') * dMult;
+    if (c==='date') return (a.date||'').localeCompare(b.date||'') * dMult;
+    if (c==='spec') {
+      const aw = parseInt(String(a.specW||''),10) || 0;
+      const bw = parseInt(String(b.specW||''),10) || 0;
+      if (aw !== bw) return (aw - bw) * dMult;
+      const ah = parseInt(String(a.specH||''),10) || 0;
+      const bh = parseInt(String(b.specH||''),10) || 0;
+      return (ah - bh) * dMult;
+    }
+    if (c==='qty') return ((a.qty||0) - (b.qty||0)) * dMult;
+    if (c==='amt') return ((a._amt||0) - (b._amt||0)) * dMult;
+    return 0;
+  });
 
   const rowHtml = monthDlvs.map(d=>{
     const item = d.item || '루버';
-    const site = sitesByName[d.siteName];
-    const isL = item==='루버', isS = item==='SMA셋', isB = item==='BIAS셋';
-    if (isL) totalLouver += d.qty; else if (isS) totalSmaSet += d.qty; else if (isB) totalBias += d.qty;
-    if (!summary[d.siteName]) summary[d.siteName] = {louver:0, smaSet:0, biasSet:0, amt:0};
-    if (isL) summary[d.siteName].louver += d.qty;
-    else if (isS) summary[d.siteName].smaSet += d.qty;
-    else if (isB) summary[d.siteName].biasSet += d.qty;
-    let amt = 0;
-    if (canPrice && isL && site) { amt = d.qty*(site.unitPrice||0); totalAmt += amt; summary[d.siteName].amt += amt; }
+    const isS = item==='SMA셋', isB = item==='BIAS셋';
     const bg = isS?'bg-success':isB?'bg-warning text-dark':'bg-primary';
     return `<tr>
       <td class="fw-bold">${d.siteName||'-'}</td>
@@ -3257,12 +3329,23 @@ function renderInvoice() {
       <td class="text-nowrap">${d.date||'-'}</td>
       <td>${d.spec?`${d.spec}mm`:'-'}</td>
       <td class="text-end fw-bold">${(d.qty||0).toLocaleString()}개</td>
-      ${canPrice?`<td class="text-end">${amt?amt.toLocaleString()+'원':'-'}</td>`:''}
+      ${canPrice?`<td class="text-end">${d._amt?d._amt.toLocaleString()+'원':'-'}</td>`:''}
     </tr>`;
   }).join('');
 
+  // ===== 현장별 합계 정렬 =====
+  const sumSort = S.invSummarySort || {col:'louver', dir:'desc'};
+  const sMult = sumSort.dir==='asc' ? 1 : -1;
   const summaryRows = Object.entries(summary)
-    .sort(([a],[b])=>a.localeCompare(b,'ko'))
+    .sort(([an,a],[bn,b])=>{
+      const c = sumSort.col;
+      if (c==='name') return an.localeCompare(bn,'ko') * sMult;
+      if (c==='louver') return (a.louver - b.louver) * sMult;
+      if (c==='smaSet') return (a.smaSet - b.smaSet) * sMult;
+      if (c==='biasSet') return (a.biasSet - b.biasSet) * sMult;
+      if (c==='amt') return (a.amt - b.amt) * sMult;
+      return 0;
+    })
     .map(([name, s])=>`<tr>
       <td class="fw-bold">${name}</td>
       <td class="text-end">${s.louver.toLocaleString()}개</td>
@@ -3270,6 +3353,11 @@ function renderInvoice() {
       <td class="text-end">${s.biasSet.toLocaleString()}개</td>
       ${canPrice?`<td class="text-end fw-bold">${s.amt?s.amt.toLocaleString()+'원':'-'}</td>`:''}
     </tr>`).join('');
+
+  // 정렬 화살표 헬퍼
+  const sArr = c => sumSort.col===c ? (sumSort.dir==='asc'?'▲':'▼') : '';
+  const dArr = c => detSort.col===c ? (detSort.dir==='asc'?'▲':'▼') : '';
+  const thStyle = 'cursor:pointer;user-select:none';
 
   body.innerHTML = `
     <div class="invoice-body">
@@ -3284,11 +3372,11 @@ function renderInvoice() {
           <h6 class="fw-bold mb-2">🏢 현장별 합계</h6>
           <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
             <thead><tr>
-              <th style="width:300px">현장명</th>
-              <th class="text-end" style="width:100px">루버</th>
-              <th class="text-end" style="width:100px">SMA셋</th>
-              <th class="text-end" style="width:100px">BIAS셋</th>
-              ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
+              <th style="width:300px;${thStyle}" onclick="setInvSummarySort('name')">현장명 <span>${sArr('name')}</span></th>
+              <th class="text-end" style="width:100px;${thStyle}" onclick="setInvSummarySort('louver')">루버 <span>${sArr('louver')}</span></th>
+              <th class="text-end" style="width:100px;${thStyle}" onclick="setInvSummarySort('smaSet')">SMA셋 <span>${sArr('smaSet')}</span></th>
+              <th class="text-end" style="width:100px;${thStyle}" onclick="setInvSummarySort('biasSet')">BIAS셋 <span>${sArr('biasSet')}</span></th>
+              ${canPrice?`<th class="text-end" style="width:120px;${thStyle}" onclick="setInvSummarySort('amt')">청구금액 <span>${sArr('amt')}</span></th>`:''}
             </tr></thead>
             <tbody>${summaryRows}</tbody>
           </table></div>
@@ -3297,12 +3385,12 @@ function renderInvoice() {
           <h6 class="fw-bold mb-2">📋 현장별 납품 내역 <span class="badge bg-light text-dark ms-1">${monthDlvs.length}건</span></h6>
           <div class="table-responsive"><table class="table table-bordered table-sm mb-0">
             <thead><tr>
-              <th style="width:200px">현장명</th>
-              <th style="width:80px">품목</th>
-              <th style="width:120px">납품일</th>
-              <th style="width:150px">규격</th>
-              <th class="text-end" style="width:80px">개수</th>
-              ${canPrice?'<th class="text-end" style="width:120px">청구금액</th>':''}
+              <th style="width:200px;${thStyle}" onclick="setInvDetailSort('name')">현장명 <span>${dArr('name')}</span></th>
+              <th style="width:80px;${thStyle}" onclick="setInvDetailSort('item')">품목 <span>${dArr('item')}</span></th>
+              <th style="width:120px;${thStyle}" onclick="setInvDetailSort('date')">납품일 <span>${dArr('date')}</span></th>
+              <th style="width:150px;${thStyle}" onclick="setInvDetailSort('spec')">규격 <span>${dArr('spec')}</span></th>
+              <th class="text-end" style="width:80px;${thStyle}" onclick="setInvDetailSort('qty')">개수 <span>${dArr('qty')}</span></th>
+              ${canPrice?`<th class="text-end" style="width:120px;${thStyle}" onclick="setInvDetailSort('amt')">청구금액 <span>${dArr('amt')}</span></th>`:''}
             </tr></thead>
             <tbody>${rowHtml}</tbody>
           </table></div>
