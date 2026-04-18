@@ -58,9 +58,9 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-wrap{overflow:auto;max-height:75vh;position:relative}
 .schedule-table{border-collapse:separate;border-spacing:0;font-size:.8rem;width:max-content;margin:0}
 .schedule-table th,.schedule-table td{border:1px solid #e2e8f0;padding:6px 8px;text-align:center;background:#fff;white-space:nowrap;vertical-align:middle}
-.schedule-table thead th{position:sticky;background:#f8fafc;font-weight:600;z-index:3;box-sizing:border-box}
-.schedule-table thead tr:first-child > th{top:0;height:34px}
-.schedule-table thead tr:first-child > th[rowspan="2"]{height:64px}
+.schedule-table thead th{position:sticky;background:#f8fafc;font-weight:600;z-index:3;box-sizing:border-box;vertical-align:middle}
+.schedule-table thead tr:first-child > th:not([rowspan]){top:0;height:34px}
+.schedule-table thead tr:first-child > th[rowspan="2"]{top:0}
 .schedule-table thead tr:nth-child(2) > th{top:34px;height:30px}
 .schedule-table .col-frozen{position:sticky;background:#fff;z-index:2}
 .schedule-table thead .col-frozen{background:#f8fafc;z-index:6}
