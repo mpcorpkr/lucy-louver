@@ -62,27 +62,21 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table thead tr:first-child > th{top:0;height:34px}
 .schedule-table thead tr:first-child > th[rowspan="2"]{height:64px}
 .schedule-table thead tr:nth-child(2) > th{top:34px;height:30px}
-/* 월별 합계 행 (thead 3행) — 헤더 바로 아래 고정, 연한 노란색 강조 */
-.schedule-table thead tr.sch-totals-row > th{top:64px;height:32px;background:#fef3c7;color:#475569;font-weight:700;text-align:center;z-index:8;border-bottom:2px solid #f59e0b}
-.schedule-table thead tr.sch-totals-row > th.col-frozen{z-index:10;background:#fde68a}
-.schedule-table thead tr.sch-totals-row > th.cur-month{background:#fbbf24 !important;color:#7c2d12}
 .schedule-table .col-frozen{position:sticky;background:#fff;z-index:2}
 .schedule-table thead .col-frozen{background:#f8fafc;z-index:6}
-.schedule-table tfoot .col-frozen{background:#f1f5f9;z-index:5}
 .schedule-table .c1{left:0;min-width:140px;text-align:left}
 .schedule-table .c2{left:140px;min-width:100px;text-align:center}
 .schedule-table .c3{left:240px;min-width:120px;text-align:center}
 .schedule-table .c4{left:360px;min-width:90px;text-align:center}
 .schedule-table .c5{left:450px;min-width:75px;text-align:center}
-.schedule-table .c6{left:525px;min-width:85px;text-align:center}
-/* 행 상태별 배경 (냬용: 셀 데이터 클래스가 우선) */
-.schedule-table tbody tr.status-active td{background:#d1fae5 !important}
-.schedule-table tbody tr.status-sample td{background:#fef3c7 !important}
+/* 행 상태별 배경 (진행중=노랑, 완료=회색) */
+.schedule-table tbody tr.status-active td{background:#fef3c7 !important}
+.schedule-table tbody tr.status-sample td{background:#fef9c3 !important}
 .schedule-table tbody tr.status-done   td{background:#e5e7eb !important;color:#6b7280}
-/* 월 셀 우선순위 (specificity를 행 상태와 동일하게 맞추고 뒤에 정의 → 뒤쪽 규칙이 승) */
-.schedule-table tbody tr td.cell-delivered{background:#86efac !important;color:#065f46;font-weight:700}
-.schedule-table tbody tr td.cell-future{background:#bae6fd !important;color:#1e40af;font-weight:700}
-.schedule-table tbody tr td.cell-move-in{background:#1e293b !important;color:#fff;font-weight:700;font-size:.72rem;line-height:1.1}
+/* 셀 상태 */
+.schedule-table tbody tr td.cell-delivered{background:#fff !important;color:#0f172a;font-weight:700}
+.schedule-table tbody tr td.cell-future{color:#2563eb;font-weight:700}
+.schedule-table tbody tr td.cell-move-in{background:#0f172a !important;color:#fff;font-weight:700;font-size:.72rem;line-height:1.1}
 .schedule-table .cell-move-in small{display:block;opacity:.75;font-weight:400}
 .schedule-table .site-link-cell{color:var(--lucy);cursor:pointer;font-weight:700}
 .schedule-table .site-link-cell:hover{text-decoration:underline;color:var(--lucy-dark)}
@@ -92,10 +86,14 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table .sch-arrow{margin-left:2px;font-size:.7rem;color:var(--lucy);display:inline-block;min-width:8px}
 .schedule-table thead th.cur-month{background:#fde68a !important;color:#92400e;font-weight:700}
 .schedule-table thead th.cur-month .sch-arrow{color:#92400e}
-.schedule-table td.cur-month{background:#fffbeb}
-.schedule-table td.cell-delivered.cur-month{background:#86efac !important}
-.schedule-table td.cell-future.cur-month{background:#bae6fd !important}
-.schedule-table tfoot th.cur-month{background:#fde68a !important;color:#92400e}
+.schedule-table td.cur-month{background:#fef3c7}
+.schedule-table td.cell-delivered.cur-month{background:#fef3c7 !important}
+.schedule-table td.cell-future.cur-month{background:#fef3c7 !important}
+/* 월별 합계 행 (tfoot 하단 고정, 연한 노란색) */
+.schedule-table tfoot th{position:sticky;bottom:0;background:#fef3c7;color:#475569;font-weight:700;text-align:center;z-index:7;border:1px solid #e2e8f0;border-top:2px solid #f59e0b;padding:6px 8px;box-sizing:border-box;height:34px}
+.schedule-table tfoot th.col-frozen{z-index:9;background:#fde68a;left:0}
+.schedule-table tfoot th.has-qty{background:#bbf7d0 !important;color:#065f46}
+.schedule-table tfoot th.cur-month{background:#fbbf24 !important;color:#7c2d12}
 /* ===== 컬럼 너비 리사이즈 ===== */
 thead th.resize-target{position:relative}
 .col-resizer{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:11}
@@ -3112,14 +3110,13 @@ function renderSchedule() {
 
   // ===== HTML 빌드 =====
   let html = '<thead>';
-  // 1행: 6개 고정 컬럼 rowspan=2 + 연도 colspan
+  // 1행: 5개 고정 컬럼 rowspan=2 + 연도 colspan
   html += '<tr>';
   html += `<th rowspan="2" class="col-frozen c1 sortable" onclick="setSchSort('name')">현장<span class="sch-arrow">${arrow('name')}</span></th>`;
   html += '<th rowspan="2" class="col-frozen c2">업체명</th>';
-  html += '<th rowspan="2" class="col-frozen c3">옵션</th>';
+  html += '<th rowspan="2" class="col-frozen c3">규격</th>';
   html += '<th rowspan="2" class="col-frozen c4">준공일</th>';
   html += `<th rowspan="2" class="col-frozen c5 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
-  html += '<th rowspan="2" class="col-frozen c6">전년도<br>납품합</th>';
   yearGroups.forEach(yg=>{
     html += `<th colspan="${yg.count}">${String(yg.y).slice(-2)}년</th>`;
   });
@@ -3132,35 +3129,19 @@ function renderSchedule() {
     html += `<th class="sortable${curCls}" onclick="setSchSort('${x.key}')">${x.m}월<span class="sch-arrow">${arrow(x.key)}</span></th>`;
   });
   html += '</tr>';
-  // 3행: 합계
-  const grandContract = sites.reduce((s, site) => s + (site.qty||0), 0);
-  const grandPrev = sites.reduce((s, site) => s + (siteData.get(site.id)?.prevYear||0), 0);
-  html += '<tr class="sch-totals-row">';
-  html += '<th class="col-frozen c1" colspan="4" style="text-align:center">합계</th>';
-  html += `<th class="col-frozen c5">${grandContract.toLocaleString()}</th>`;
-  html += `<th class="col-frozen c6">${grandPrev?grandPrev.toLocaleString():''}</th>`;
-  months.forEach(x=>{
-    let sum = 0;
-    for (const [, sd] of siteData) sum += (sd.perMonth[x.key]||0);
-    const isCur = x.key === todayKey;
-    const curCls = isCur ? ' cur-month' : '';
-    html += `<th class="${curCls.trim()}">${sum ? sum.toLocaleString() : ''}</th>`;
-  });
-  html += '</tr>';
   html += '</thead>';
 
   // ===== tbody: 그룹별 렌더, 현장 cell에 rowspan =====
   html += '<tbody>';
   groups.forEach(group=>{
-    const isMulti = group.rows.length > 1;
     group.rows.forEach((s, idx)=>{
       const sd = siteData.get(s.id) || {perMonth:{}, prevYear:0};
       const compKey = parseYYYYMM(s.compDate);
       const statusCls = statusToCls(s.status);
-      // 옵션: 그룹에 여러 행이 있을 때만 규격 표시
+      // 규격: 가로×세로 항상 표시
       const sp = (s.specs||[])[0];
-      const optLabel = (isMulti && sp && (sp.width||sp.height))
-        ? `${sp.width||'-'}×${sp.height||'-'}mm` : '';
+      const specLabel = (sp && (sp.width||sp.height))
+        ? `${sp.width||'-'}×${sp.height||'-'}` : '-';
 
       html += `<tr${statusCls?` class="${statusCls}"`:''}>`;
       // 현장 cell (그룹의 첫 행만 렌더, rowspan으로 확장)
@@ -3168,10 +3149,9 @@ function renderSchedule() {
         html += `<td rowspan="${group.rows.length}" class="col-frozen c1"><span class="site-link-cell" onclick="openSiteDetail('${s.id}')">${s.name||'-'}</span></td>`;
       }
       html += `<td class="col-frozen c2">${s.contractor||'-'}</td>`;
-      html += `<td class="col-frozen c3">${optLabel}</td>`;
+      html += `<td class="col-frozen c3">${specLabel}</td>`;
       html += `<td class="col-frozen c4">${fmtCompDate(s.compDate)}</td>`;
       html += `<td class="col-frozen c5">${(s.qty||0).toLocaleString()}</td>`;
-      html += `<td class="col-frozen c6">${sd.prevYear?sd.prevYear.toLocaleString():''}</td>`;
       months.forEach(x=>{
         const qty = sd.perMonth[x.key] || 0;
         const isComp = compKey === x.key;
@@ -3191,6 +3171,18 @@ function renderSchedule() {
     });
   });
   html += '</tbody>';
+
+  // ===== tfoot: 월별 합계 (하단 고정) =====
+  html += '<tfoot><tr>';
+  html += '<th class="col-frozen c1" colspan="5">월별 합계</th>';
+  months.forEach(x=>{
+    let sum = 0;
+    for (const [, sd] of siteData) sum += (sd.perMonth[x.key]||0);
+    const isCur = x.key === todayKey;
+    const cls = [sum>0?'has-qty':'', isCur?'cur-month':''].filter(Boolean).join(' ');
+    html += `<th${cls?` class="${cls}"`:''}>${sum ? sum.toLocaleString() : '-'}</th>`;
+  });
+  html += '</tr></tfoot>';
 
   document.getElementById('schTable').innerHTML = html;
 
