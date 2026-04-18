@@ -58,10 +58,7 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-wrap{overflow:auto;max-height:75vh;position:relative}
 .schedule-table{border-collapse:separate;border-spacing:0;font-size:.8rem;width:max-content;margin:0}
 .schedule-table th,.schedule-table td{border:1px solid #e2e8f0;padding:6px 8px;text-align:center;background:#fff;white-space:nowrap;vertical-align:middle}
-.schedule-table thead th{position:sticky;background:#f8fafc;font-weight:600;z-index:3;box-sizing:border-box;vertical-align:middle}
-.schedule-table thead tr:first-child > th:not([rowspan]){top:0;height:34px}
-.schedule-table thead tr:first-child > th[rowspan="2"]{top:0}
-.schedule-table thead tr:nth-child(2) > th{top:34px;height:30px}
+.schedule-table thead th{position:sticky;top:0;background:#f8fafc;font-weight:600;z-index:3;box-sizing:border-box;vertical-align:middle;height:40px}
 .schedule-table .col-frozen{position:sticky;background:#fff;z-index:2}
 .schedule-table thead .col-frozen{background:#f8fafc;z-index:6}
 .schedule-table .c1{left:0;min-width:140px;text-align:left}
@@ -3020,14 +3017,6 @@ function renderSchedule() {
     m++; if (m > 12) { m = 1; y++; }
   }
 
-  // 연도 그룹(연도별 span)
-  const yearGroups = [];
-  months.forEach(x=>{
-    const last = yearGroups[yearGroups.length-1];
-    if (last && last.y===x.y) last.count++;
-    else yearGroups.push({ y:x.y, count:1 });
-  });
-
   // 현장 row별로 월별 납품 집계 (매칭은 _siteMatcher에서 대소문자/공백 정규화)
   const siteData = new Map(); // siteId -> { perMonth:{mk:qty} }
   for (const s of sites) {
@@ -3105,27 +3094,20 @@ function renderSchedule() {
   };
 
   // ===== HTML 빌드 =====
-  let html = '<thead>';
-  // 1행: 5개 고정 컬럼 rowspan=2 + 연도 colspan
-  html += '<tr>';
-  html += `<th rowspan="2" class="col-frozen c1 sortable" onclick="setSchSort('name')">현장<span class="sch-arrow">${arrow('name')}</span></th>`;
-  html += '<th rowspan="2" class="col-frozen c2">업체명</th>';
-  html += '<th rowspan="2" class="col-frozen c3">규격</th>';
-  html += '<th rowspan="2" class="col-frozen c4">준공일</th>';
-  html += `<th rowspan="2" class="col-frozen c5 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
-  yearGroups.forEach(yg=>{
-    html += `<th colspan="${yg.count}">${String(yg.y).slice(-2)}년</th>`;
-  });
-  html += '</tr>';
-  // 2행: 월
-  html += '<tr>';
+  // ===== thead: 1행 단일 구조 (rowspan/colspan 없음) =====
+  let html = '<thead><tr>';
+  html += `<th class="col-frozen c1 sortable" onclick="setSchSort('name')">현장<span class="sch-arrow">${arrow('name')}</span></th>`;
+  html += '<th class="col-frozen c2">업체명</th>';
+  html += '<th class="col-frozen c3">규격</th>';
+  html += '<th class="col-frozen c4">준공일</th>';
+  html += `<th class="col-frozen c5 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
   months.forEach(x=>{
     const isCur = x.key === todayKey;
     const curCls = isCur ? ' cur-month' : '';
-    html += `<th class="sortable${curCls}" onclick="setSchSort('${x.key}')">${x.m}월<span class="sch-arrow">${arrow(x.key)}</span></th>`;
+    const label = `${String(x.y).slice(-2)}년${x.m}월`;
+    html += `<th class="sortable${curCls}" onclick="setSchSort('${x.key}')">${label}<span class="sch-arrow">${arrow(x.key)}</span></th>`;
   });
-  html += '</tr>';
-  html += '</thead>';
+  html += '</tr></thead>';
 
   // ===== tbody: 그룹별 렌더, 현장 cell에 rowspan =====
   html += '<tbody>';
@@ -3175,18 +3157,6 @@ function renderSchedule() {
   html += '</tr></tfoot>';
 
   document.getElementById('schTable').innerHTML = html;
-
-  // ===== 헤더 2행 sticky top 동적 보정 =====
-  // row1 실제 렌더 높이를 측정해 row2의 top을 정확히 맞춤 (갭 방지)
-  requestAnimationFrame(()=>{
-    const tbl = document.getElementById('schTable');
-    const row1 = tbl?.querySelector('thead tr:first-child');
-    if (!row1) return;
-    const h1 = row1.getBoundingClientRect().height;
-    tbl.querySelectorAll('thead tr:nth-child(2) > th').forEach(th=>{
-      th.style.top = h1 + 'px';
-    });
-  });
 
   // ===== 콘솔 진단 =====
   try {
