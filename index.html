@@ -1867,6 +1867,7 @@ function renderSiteList() {
 
 function openSiteDetail(id) {
   const s = S.data.sites.find(x=>x.id===id); if(!s) return;
+  S._currentSiteDetailId = id;
   // 같은 현장명의 모든 행을 통합 집계
   const allRows = S.data.sites.filter(x => x.name === s.name);
   const allNameDlvs = S.data.deliveries.filter(d => d.siteName === s.name);
@@ -1915,6 +1916,50 @@ function openSiteDetail(id) {
       <td><small class="text-muted">${d.note||'-'}</small></td>
     </tr>`;
   }).join('');
+
+  // 🔧 마감자재 납품 이력 (날짜순 누적계산 → 사용자 정렬 적용)
+  const finSort = S.siteFinishSort || {col:'date', dir:'asc'};
+  const finArr = c => finSort.col===c ? (finSort.dir==='asc'?' ▲':' ▼') : '';
+  const finishDlvsByDate = [...allNameDlvs]
+    .filter(d => d.item==='SMA셋' || d.item==='BIAS셋' || d.item==='SMA단독')
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||'').localeCompare(b.createdAt||''));
+  let cumSmaSet=0, cumPureBias=0, cumSmaStandalone=0;
+  finishDlvsByDate.forEach(d=>{
+    const q = d.qty||0;
+    if (d.item==='SMA셋') cumSmaSet += q;
+    else if (d.item==='BIAS셋') cumPureBias += q;
+    else if (d.item==='SMA단독') cumSmaStandalone += q;
+    // 누적(BIAS셋) = 누적 SMA셋 + 누적 순수 BIAS셋
+    d._cumBias = cumSmaSet + cumPureBias;
+    // 누적(SMA) = 누적 SMA셋 (SMA셋이 SMA를 포함) + SMA단독
+    d._cumSma = cumSmaSet + cumSmaStandalone;
+    // 누적(SMA셋) = 누적 SMA셋
+    d._cumSmaSet = cumSmaSet;
+  });
+  const finishTotalBias    = cumSmaSet + cumPureBias;
+  const finishTotalSma     = cumSmaSet + cumSmaStandalone;
+  const finishTotalSmaSet  = cumSmaSet;
+  const finishDlvs = [...finishDlvsByDate].sort((a,b)=>{
+    const dir = finSort.dir==='asc' ? 1 : -1;
+    if (finSort.col==='date') return (((a.date||'').localeCompare(b.date||''))||((a.createdAt||'').localeCompare(b.createdAt||'')))*dir;
+    if (finSort.col==='item') return ((a.item||'').localeCompare(b.item||'','ko'))*dir;
+    if (finSort.col==='qty')  return ((a.qty||0)-(b.qty||0))*dir;
+    return 0;
+  });
+  const itemBadge = it => {
+    if (it==='SMA셋')   return '<span class="badge bg-primary">SMA셋</span>';
+    if (it==='BIAS셋')  return '<span class="badge bg-success">BIAS셋</span>';
+    if (it==='SMA단독') return '<span class="badge bg-warning text-dark">SMA단독</span>';
+    return `<span class="badge bg-secondary">${it||'-'}</span>`;
+  };
+  const finishRows = finishDlvs.map(d=>`<tr>
+      <td class="text-nowrap">${d.date||'-'}</td>
+      <td>${itemBadge(d.item)}</td>
+      <td class="text-center fw-bold">${(d.qty||0).toLocaleString()}</td>
+      <td class="text-center text-success fw-bold">${(d._cumBias||0).toLocaleString()}</td>
+      <td class="text-center text-warning fw-bold">${(d._cumSma||0).toLocaleString()}</td>
+      <td class="text-center text-primary fw-bold">${(d._cumSmaSet||0).toLocaleString()}</td>
+    </tr>`).join('');
 
   document.getElementById('siteDetailBody').innerHTML = `
     <div class="row g-3">
@@ -2021,7 +2066,7 @@ function openSiteDetail(id) {
         ${s.kiDue?`<div class="mt-1 text-muted">기성 마감일: ${s.kiDue}</div>`:''}</div>
       <div class="col-12"><hr>
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <div class="fw-bold" style="color:var(--lucy)"><i class="bi bi-truck"></i> 납품 이력 <span class="badge bg-light text-dark ms-1">${siteDlvs.length}건</span></div>
+          <div class="fw-bold" style="color:var(--lucy)"><i class="bi bi-truck"></i> 루버 납품 이력 <span class="badge bg-light text-dark ms-1">${siteDlvs.length}건</span></div>
           <small class="text-muted">날짜순 · 누적합계 포함</small>
         </div>
         ${siteDlvs.length===0
@@ -2043,6 +2088,39 @@ function openSiteDetail(id) {
                     <td class="text-center fw-bold text-success">${dlvd}</td>
                     <td class="text-center fw-bold">${dlvd}/${s.qty} (${pct}%)</td>
                     <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>`}
+      </div>
+      <!-- 🔧 마감자재 납품 이력 -->
+      <div class="col-12"><hr>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="fw-bold text-success" style="font-size:1rem"><i class="bi bi-gear"></i> 🔧 마감자재 납품 이력 <span class="badge bg-light text-dark ms-1">${finishDlvs.length}건</span></div>
+          <small class="text-muted">날짜순 누적 · 컬럼 클릭하여 정렬</small>
+        </div>
+        ${finishDlvs.length===0
+          ? '<div class="text-muted text-center py-3" style="background:#f8fafc;border-radius:8px">마감자재 납품 이력 없음</div>'
+          : `<div class="table-responsive" style="border:1px solid #e2e8f0;border-radius:8px">
+              <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+                <thead style="background:#f8fafc">
+                  <tr>
+                    <th style="cursor:pointer;user-select:none" onclick="setSiteFinishSort('date')">납품일<span>${finArr('date')}</span></th>
+                    <th style="cursor:pointer;user-select:none" onclick="setSiteFinishSort('item')">품목<span>${finArr('item')}</span></th>
+                    <th class="text-center" style="cursor:pointer;user-select:none" onclick="setSiteFinishSort('qty')">수량<span>${finArr('qty')}</span></th>
+                    <th class="text-center">누적(BIAS셋)</th>
+                    <th class="text-center">누적(SMA)</th>
+                    <th class="text-center">누적(SMA셋)</th>
+                  </tr>
+                </thead>
+                <tbody>${finishRows}</tbody>
+                <tfoot style="background:#f1f5f9">
+                  <tr>
+                    <td colspan="2" class="fw-bold text-end">합계</td>
+                    <td class="text-center fw-bold">${finishDlvs.reduce((a,d)=>a+(d.qty||0),0).toLocaleString()}</td>
+                    <td class="text-center fw-bold text-success">${finishTotalBias.toLocaleString()}</td>
+                    <td class="text-center fw-bold text-warning">${finishTotalSma.toLocaleString()}</td>
+                    <td class="text-center fw-bold text-primary">${finishTotalSmaSet.toLocaleString()}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -3207,6 +3285,15 @@ function renderSchedule() {
     </div>`;
   }
   setTimeout(enableAllTableResize, 0);
+}
+
+// ===== 현장 상세 - 마감자재 납품 이력 정렬 =====
+function setSiteFinishSort(col) {
+  const cur = S.siteFinishSort || {col:'date', dir:'asc'};
+  if (cur.col === col) cur.dir = cur.dir==='asc' ? 'desc' : 'asc';
+  else { cur.col = col; cur.dir = (col==='qty') ? 'desc' : 'asc'; }
+  S.siteFinishSort = cur;
+  if (S._currentSiteDetailId) openSiteDetail(S._currentSiteDetailId);
 }
 
 // ===== 월별 마감 내역서 =====
