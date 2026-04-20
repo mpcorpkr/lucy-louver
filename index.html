@@ -1132,17 +1132,24 @@ function _siteMatcher(siteId) {
   const norm = s => String(s||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
   const siteKey = norm(site.name);
   const sameName = S.data.sites.filter(s=>norm(s.name)===siteKey);
-  const useWidth = sameName.length > 1;
-  const widths = useWidth
-    ? (site.specs||[]).map(sp=>parseInt(String(sp.width||''),10)).filter(w=>w>0)
+  const useSpec = sameName.length > 1;
+  // 이 현장 행의 (가로×세로) 조합 목록 — 가로+세로 동시 일치로 매칭
+  const specPairs = useSpec
+    ? (site.specs||[]).map(sp=>{
+        const w = parseInt(String(sp.width||''),10);
+        const h = parseInt(String(sp.height||''),10);
+        return (w>0 && h>0) ? `${w}x${h}` : null;
+      }).filter(Boolean)
     : [];
   return {
     site,
     match: d => {
       if (norm(d.siteName) !== siteKey) return false;
-      if (!useWidth) return true;
+      if (!useSpec) return true;
       const dW = parseInt(String(d.specW||''),10);
-      return widths.includes(dW);
+      const dH = parseInt(String(d.specH||''),10);
+      if (!dW || !dH) return false;
+      return specPairs.includes(`${dW}x${dH}`);
     }
   };
 }
@@ -1153,17 +1160,22 @@ function totalDelivered(siteId) {
     .filter(d => _isLouver(d) && match(d))
     .reduce((s,d)=>s+(d.qty||0),0);
 }
-// 규격별 납품: 현장명 + 가로(width) 숫자 일치 (행 중복과 무관하게 항상 가로 기준)
+// 규격별 납품: 현장명 + 가로 AND 세로 두 값이 모두 일치해야 매칭
 function totalDeliveredBySpec(siteId, specKey) {
   const site = S.data.sites.find(s=>s.id===siteId);
   if (!site) return 0;
-  const targetW = parseInt(String(specKey||'').split('×')[0]||'', 10);
-  if (!targetW) return 0;
+  const norm = s => String(s||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+  const siteKey = norm(site.name);
+  const parts = String(specKey||'').split('×');
+  const targetW = parseInt(parts[0]||'', 10);
+  const targetH = parseInt(parts[1]||'', 10);
+  if (!targetW || !targetH) return 0;
   return S.data.deliveries
     .filter(d=>{
-      if (d.siteName !== site.name || !_isLouver(d)) return false;
+      if (norm(d.siteName) !== siteKey || !_isLouver(d)) return false;
       const dW = parseInt(String(d.specW||''), 10);
-      return dW === targetW;
+      const dH = parseInt(String(d.specH||''), 10);
+      return dW === targetW && dH === targetH;
     })
     .reduce((s,d)=>s+(d.qty||0),0);
 }
