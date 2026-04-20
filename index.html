@@ -66,6 +66,13 @@ thead th.sortable:hover{background:#e2e8f0}
 .schedule-table .c3{left:240px;min-width:120px;text-align:center}
 .schedule-table .c4{left:360px;min-width:90px;text-align:center}
 .schedule-table .c5{left:450px;min-width:75px;text-align:center}
+.schedule-table .c6{left:525px;min-width:70px;text-align:center}
+/* 준공월 셀: 납품 없으면 검정 배경 + 흰 텍스트 */
+.schedule-table tbody tr td.cell-complete{background:#111827 !important;color:#fff !important;font-weight:700}
+.schedule-table tbody tr td.cell-complete.cur-month{background:#111827 !important}
+.schedule-table tbody tr td.cell-delivered.cell-complete-has{background:#86efac !important}
+.schedule-table .complete-tag{display:block;font-size:.65rem;font-weight:700;color:#111827;margin-top:1px;letter-spacing:.5px}
+.schedule-table tbody tr.status-done td.cell-complete{background:#111827 !important;color:#fff !important}
 /* 행 상태별 배경 (진행중=노랑, 완료=회색) */
 .schedule-table tbody tr.status-active td{background:#fef3c7 !important}
 .schedule-table tbody tr.status-sample td{background:#fef9c3 !important}
@@ -3066,8 +3073,8 @@ function setSchSort(col) {
     S.schSort.dir = S.schSort.dir==='asc' ? 'desc' : 'asc';
   } else {
     S.schSort.col = col;
-    // 월 컬럼은 기본 내림차순(많은 순), 이름/총개수는 오름차순
-    S.schSort.dir = /^\d{4}-\d{2}$/.test(col) ? 'desc' : 'asc';
+    // 월/잔여/총개수 컬럼은 기본 내림차순(많은 순), 이름은 오름차순
+    S.schSort.dir = (/^\d{4}-\d{2}$/.test(col) || col==='rem' || col==='qty') ? 'desc' : 'asc';
   }
   renderSchedule();
 }
@@ -3145,13 +3152,15 @@ function renderSchedule() {
   }
   const groups = [...groupsMap.entries()].map(([name, rows])=>{
     const totalQty = rows.reduce((sum, s) => sum + (s.qty||0), 0);
+    const totalDlvd = rows.reduce((sum, s) => sum + totalDelivered(s.id), 0);
+    const totalRem  = totalQty - totalDlvd;
     const totalPrev = rows.reduce((sum, s) => sum + (siteData.get(s.id)?.prevYear||0), 0);
     const combinedMonth = {};
     rows.forEach(s=>{
       const pm = siteData.get(s.id)?.perMonth || {};
       for (const [k,v] of Object.entries(pm)) combinedMonth[k] = (combinedMonth[k]||0) + v;
     });
-    return { name, rows, totalQty, totalPrev, combinedMonth };
+    return { name, rows, totalQty, totalDlvd, totalRem, totalPrev, combinedMonth };
   });
 
   // 그룹 단위 정렬 (같은 현장명 행들은 항상 인접)
@@ -3161,6 +3170,7 @@ function renderSchedule() {
     const col = schSort.col;
     if (col==='name') return (a.name||'').localeCompare(b.name||'','ko') * mult;
     if (col==='qty')  return (a.totalQty - b.totalQty) * mult;
+    if (col==='rem')  return (a.totalRem - b.totalRem) * mult;
     if (/^\d{4}-\d{2}$/.test(col)) {
       const av = a.combinedMonth[col]||0, bv = b.combinedMonth[col]||0;
       if (av===0 && bv===0) return 0;
@@ -3195,6 +3205,7 @@ function renderSchedule() {
   html += '<th class="col-frozen c3">규격</th>';
   html += '<th class="col-frozen c4">준공일</th>';
   html += `<th class="col-frozen c5 sortable" onclick="setSchSort('qty')">총개수<span class="sch-arrow">${arrow('qty')}</span></th>`;
+  html += `<th class="col-frozen c6 sortable" onclick="setSchSort('rem')">잔여<span class="sch-arrow">${arrow('rem')}</span></th>`;
   months.forEach(x=>{
     const isCur = x.key === todayKey;
     const curCls = isCur ? ' cur-month' : '';
@@ -3206,6 +3217,15 @@ function renderSchedule() {
   // ===== tbody: 그룹별 렌더, 현장 cell에 rowspan =====
   html += '<tbody>';
   groups.forEach(group=>{
+    // 그룹 전체 잔여 (같은 현장명 모든 행 합산, 루버만)
+    const groupDlvd = group.rows.reduce((sum,s)=>sum+totalDelivered(s.id), 0);
+    const groupRem  = group.totalQty - groupDlvd;
+    // 그룹 대표 준공월 (첫 행 기준)
+    const groupCompKey = (() => {
+      const cd = group.rows[0]?.compDate;
+      const m = String(cd||'').match(/^(\d{4})[\-\/.\s]*(\d{1,2})/);
+      return m ? `${m[1]}-${String(+m[2]).padStart(2,'0')}` : '';
+    })();
     group.rows.forEach((s, idx)=>{
       const sd = siteData.get(s.id) || {perMonth:{}};
       const statusCls = statusToCls(s.status);
@@ -3223,12 +3243,22 @@ function renderSchedule() {
       html += `<td class="col-frozen c3">${specLabel}</td>`;
       html += `<td class="col-frozen c4">${fmtCompDate(s.compDate)}</td>`;
       html += `<td class="col-frozen c5">${(s.qty||0).toLocaleString()}</td>`;
+      // 잔여 (행 단위): 이 행의 계약 - 이 행의 납품 (_siteMatcher로 정확히 매칭)
+      const rowDlvd = totalDelivered(s.id);
+      const rowRem  = (s.qty||0) - rowDlvd;
+      const remColor = rowRem<=0 ? '#059669' : '#dc2626';
+      html += `<td class="col-frozen c6" style="color:${remColor};font-weight:700">${rowRem.toLocaleString()}</td>`;
       months.forEach(x=>{
         const qty = sd.perMonth[x.key] || 0;
         const isCur = x.key === todayKey;
+        // 준공월 표시: 그룹의 첫 행에만 (중복 방지). compDate의 YYYY-MM과 일치하면 표시
+        const isCompMonth = (idx === 0) && !!groupCompKey && (x.key === groupCompKey);
+        const curCls = isCur ? ' cur-month' : '';
         if (qty > 0) {
-          const curCls = isCur ? ' cur-month' : '';
-          html += `<td class="cell-delivered${curCls}">${qty.toLocaleString()}</td>`;
+          const compHtml = isCompMonth ? `<span class="complete-tag">준공</span>` : '';
+          html += `<td class="cell-delivered${curCls}">${qty.toLocaleString()}${compHtml}</td>`;
+        } else if (isCompMonth) {
+          html += `<td class="cell-complete${curCls}">준공</td>`;
         } else {
           html += isCur ? '<td class="cur-month"></td>' : '<td></td>';
         }
@@ -3240,7 +3270,7 @@ function renderSchedule() {
 
   // ===== tfoot: 월별 합계 (하단 고정) =====
   html += '<tfoot><tr>';
-  html += '<th class="col-frozen c1" colspan="5">월별 합계</th>';
+  html += '<th class="col-frozen c1" colspan="6">월별 합계</th>';
   months.forEach(x=>{
     let sum = 0;
     for (const [, sd] of siteData) sum += (sd.perMonth[x.key]||0);
@@ -3656,7 +3686,7 @@ function _autoFitCol(e, th, tableEl) {
 }
 // sticky 좌측 고정 컬럼의 left 오프셋을 현재 폭 기준으로 재계산
 function _updateFrozenOffsets(tableEl) {
-  const classes = ['c1','c2','c3','c4'];
+  const classes = ['c1','c2','c3','c4','c5'];
   const firstRow = tableEl.querySelector('thead tr');
   if (!firstRow) return;
   let left = 0;
@@ -3666,6 +3696,11 @@ function _updateFrozenOffsets(tableEl) {
     tableEl.querySelectorAll(`.${cls}`).forEach(c => { c.style.left = left + 'px'; });
     left += w;
   });
+  // c6는 c1~c5 누적 width 직후 위치
+  const c6Header = firstRow.querySelector('.c6');
+  if (c6Header) {
+    tableEl.querySelectorAll('.c6').forEach(c => { c.style.left = left + 'px'; });
+  }
 }
 
 // 1~31일 옵션 채우기
