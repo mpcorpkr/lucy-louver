@@ -1169,27 +1169,30 @@ function totalDeliveredBySpec(siteId, specKey) {
 }
 function remaining(site) { return site.qty - totalDelivered(site.id); }
 // 마감자재 집계: 현장명 + 조건부 가로값 기반 매칭
-// 마감 진행율 = SMA셋 ÷ 루버 계약수량 × 100 (루버 1개당 SMA셋 1개 필요)
+// 개념: SMA셋 = BIAS + SMA 동시 납품 (SMA셋 1개 안에 BIAS 1개 + SMA 1개 포함)
+//       BIAS셋 납품 합계 = SMA셋 + 순수 BIAS셋
+//       SMA 납품 필요 = BIAS셋 총합, SMA 납품 완료 = SMA셋 (SMA 포함)
+//       마감 진행율 = SMA셋 ÷ BIAS셋 합계 × 100
 function finishTotals(siteId) {
   const {site, match} = _siteMatcher(siteId);
   if (!site) {
-    return { count:0, hasFinish:false, smaSet:0, biasSet:0, smaStandalone:0,
+    return { count:0, hasFinish:false, smaSet:0, biasSet:0, biasSetRaw:0, smaStandalone:0,
              smaRequired:0, smaDelivered:0, smaRemaining:0, finishTotal:0, finishPct:0 };
   }
-  const contractQty = site.qty || 0;
   const dlvs = S.data.deliveries.filter(match);
-  const smaSet  = dlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
-  const biasSet = dlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
-  const count   = dlvs.filter(d=>d.item==='SMA셋' || d.item==='BIAS셋').length;
-  const finishTotal = contractQty;
-  const finishPct = contractQty>0 ? Math.min(100, Math.round(smaSet/contractQty*1000)/10) : 0;
+  const smaSet     = dlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
+  const biasSetRaw = dlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
+  const biasTotal  = smaSet + biasSetRaw; // BIAS셋 총합 (SMA셋 포함)
+  const count      = dlvs.filter(d=>d.item==='SMA셋' || d.item==='BIAS셋').length;
+  const finishPct  = biasTotal>0 ? Math.min(100, Math.round(smaSet/biasTotal*1000)/10) : 0;
   return {
     count, hasFinish: count>0,
-    smaSet, biasSet, smaStandalone:0,
-    smaRequired: biasSet,
+    smaSet, biasSet: biasTotal, biasSetRaw, smaStandalone:0,
+    smaRequired: biasTotal,
     smaDelivered: smaSet,
-    smaRemaining: biasSet - smaSet,
-    finishTotal, finishPct
+    smaRemaining: biasTotal - smaSet,
+    finishTotal: biasTotal,
+    finishPct
   };
 }
 
@@ -1881,17 +1884,18 @@ function openSiteDetail(id) {
     }
   }
   allSpecs.sort((a,b) => (b.qty||0) - (a.qty||0));
-  // 마감자재: 현장명 전체 기준 (SMA셋/BIAS셋 합계)
-  const smaSet  = allNameDlvs.filter(d=>d.item==='SMA셋' ).reduce((a,d)=>a+(d.qty||0), 0);
-  const biasSet = allNameDlvs.filter(d=>d.item==='BIAS셋').reduce((a,d)=>a+(d.qty||0), 0);
+  // 마감자재: 현장명 전체 기준 (SMA셋=BIAS+SMA 동시, BIAS셋=순수)
+  const smaSet     = allNameDlvs.filter(d=>d.item==='SMA셋' ).reduce((a,d)=>a+(d.qty||0), 0);
+  const biasSetRaw = allNameDlvs.filter(d=>d.item==='BIAS셋').reduce((a,d)=>a+(d.qty||0), 0);
+  const biasTotal  = smaSet + biasSetRaw; // BIAS셋 총합 (SMA셋 포함)
   const finishCount = allNameDlvs.filter(d=>d.item==='SMA셋'||d.item==='BIAS셋').length;
   const ft = {
     count: finishCount, hasFinish: finishCount>0,
-    smaSet, biasSet, smaStandalone:0,
-    smaRequired: biasSet, smaDelivered: smaSet,
-    smaRemaining: biasSet - smaSet,
-    finishTotal: contractQty,
-    finishPct: contractQty>0 ? Math.min(100, Math.round(smaSet/contractQty*1000)/10) : 0
+    smaSet, biasSet: biasTotal, biasSetRaw, smaStandalone:0,
+    smaRequired: biasTotal, smaDelivered: smaSet,
+    smaRemaining: biasTotal - smaSet,
+    finishTotal: biasTotal,
+    finishPct: biasTotal>0 ? Math.min(100, Math.round(smaSet/biasTotal*1000)/10) : 0
   };
   const hasFinish = ft.hasFinish;
   // 납품 이력: 같은 이름의 모든 루버 납품 (누적합계는 통합 계약 기준)
@@ -1987,8 +1991,8 @@ function openSiteDetail(id) {
         <div class="rounded p-3" style="background:#f0fdf4;border:1px solid #bbf7d0">
           <div class="row g-2" style="font-size:.88rem">
             <div class="col-md-6"><div class="d-flex justify-content-between"><span class="text-muted">SMA셋 납품 합계</span><span class="fw-bold">${ft.smaSet.toLocaleString()} 세트</span></div></div>
-            <div class="col-md-6"><div class="d-flex justify-content-between"><span class="text-muted">BIAS셋 납품 합계</span><span class="fw-bold">${ft.biasSet.toLocaleString()} 세트</span></div></div>
-            <div class="col-md-6"><div class="d-flex justify-content-between"><span class="text-muted">SMA 납품 필요</span><span class="fw-bold">${ft.smaRequired.toLocaleString()}개 <small class="text-muted">(=BIAS셋)</small></span></div></div>
+            <div class="col-md-6"><div class="d-flex justify-content-between"><span class="text-muted">BIAS셋 납품 합계 <small class="text-muted">(SMA셋 포함)</small></span><span class="fw-bold">${ft.biasSet.toLocaleString()} 세트</span></div></div>
+            <div class="col-md-6"><div class="d-flex justify-content-between"><span class="text-muted">SMA 납품 필요</span><span class="fw-bold">${ft.smaRequired.toLocaleString()}개 <small class="text-muted">(=BIAS셋 합계)</small></span></div></div>
             <div class="col-md-6"><div class="d-flex justify-content-between"><span class="text-muted">SMA 납품 완료</span><span class="fw-bold text-success">${ft.smaDelivered.toLocaleString()}개</span></div></div>
             <div class="col-12 pt-2 mt-1" style="border-top:1px solid #bbf7d0">
               <div class="d-flex justify-content-between align-items-center">
