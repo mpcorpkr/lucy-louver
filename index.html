@@ -1194,6 +1194,65 @@ async function loadOrdersDH()  { const r=await apiRequest('GET',`${SH.DH}!A2:J`)
 async function loadOrdersMG()  { const r=await apiRequest('GET',`${SH.MG}!A2:Q`);   if(r) S.data.ordersMG=(r.values||[]).filter(row=>row[0]).map(mkOrderMG); }
 async function loadCustomers() { const r=await apiRequest('GET',`${SH.CUST}!A2:I`); if(r) S.data.customers=(r.values||[]).filter(row=>row[0]).map(mkCustomer); }
 
+// =================== SAFE RENDER / 검색 에러 보호 ===================
+// 모든 검색/필터/렌더 함수는 이 유틸을 통해 보호됩니다.
+// 원칙:
+//   1) 렌더 중 어떤 예외가 발생해도 로그인 상태(S.user/S.perm/S.googleToken)를 건드리지 않음
+//   2) 로그인 화면은 오직 로그인/로그아웃 버튼에서만 토글됨
+//   3) 예외 발생 시 콘솔 로그 + 테이블에 안내 메시지만 표시, 페이지는 현 상태 유지
+const SafeRender = {
+  // 검색 결과 없음 (데이터는 있는데 필터에 맞는 항목 없음)
+  emptySearch(colspan, qRaw, clearBtnFn) {
+    const q = qRaw==null?'':String(qRaw);
+    const qDisp = q ? `"${q.replace(/</g,'&lt;').replace(/>/g,'&gt;')}"` : '';
+    const btn = (q && clearBtnFn)
+      ? `<button class="btn btn-sm btn-outline-secondary mt-3" onclick="${clearBtnFn}"><i class="bi bi-x-circle"></i> 검색 초기화</button>`
+      : '';
+    return `<tr><td colspan="${colspan}" class="text-center py-5">
+      <div class="text-muted"><i class="bi bi-search" style="font-size:1.6rem"></i></div>
+      <div class="fw-bold mt-2">검색 결과가 없습니다.</div>
+      <div class="text-muted small mt-1">다른 검색어로 시도해보세요.${qDisp?`<br>현재 검색어: <span class="text-dark">${qDisp}</span>`:''}</div>
+      ${btn}
+    </td></tr>`;
+  },
+  // 데이터 자체가 없음
+  emptyNoData(colspan, label='데이터 없음') {
+    return `<tr><td colspan="${colspan}" class="text-center py-4 text-muted">${label}</td></tr>`;
+  },
+  // 예외 발생 — 로그인으로 튀지 않도록 메시지만 표시
+  errorRow(colspan, err, retryFn) {
+    const msg = String(err?.message||err||'알 수 없는 오류').replace(/</g,'&lt;');
+    const retry = retryFn ? `<button class="btn btn-sm btn-outline-secondary mt-2" onclick="${retryFn}">다시 시도</button>` : '';
+    return `<tr><td colspan="${colspan}" class="text-center py-4">
+      <div class="text-danger fw-bold"><i class="bi bi-exclamation-triangle"></i> 검색 중 오류가 발생했습니다.</div>
+      <div class="text-muted small mt-1">${msg}</div>
+      ${retry}
+    </td></tr>`;
+  },
+  // 렌더 함수 래퍼: 예외 발생 시 tbodyId에 오류 메시지 출력, 로그인 상태는 보호
+  wrap(name, fn, opts = {}) {
+    const { tbodyId, colspan=6, retry } = opts;
+    return function(...args) {
+      try {
+        return fn.apply(this, args);
+      } catch (err) {
+        console.error(`[${name}] 검색/렌더 오류 — 로그인 상태 보호됨:`, err);
+        try {
+          if (tbodyId) {
+            const el = document.getElementById(tbodyId);
+            if (el) el.innerHTML = SafeRender.errorRow(colspan, err, retry);
+          }
+          // toast가 있으면 안내 (토스트 자체도 실패해도 무시)
+          if (typeof toast === 'function') toast('검색 중 오류가 발생했습니다', 'error');
+        } catch (inner) {
+          console.warn(`[${name}] 오류 메시지 표시 실패:`, inner);
+        }
+        // 로그인 상태는 절대 건드리지 않음 — 어떤 경로로도 logout()/S.user 변경 없음
+      }
+    };
+  }
+};
+
 // =================== COMPUTED ===================
 // '루버' 품목만 계약 진행률에 집계. BIAS셋/SMA셋은 마감자재 현황으로 분리.
 const _isLouver = d => {
@@ -1305,17 +1364,24 @@ function calcInventory() {
 
 // =================== DASHBOARD ===================
 function renderDashboard() {
-  const now = new Date();
-  document.getElementById('dashDate').textContent =
-    `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
-  // 기존 대시보드 차트 모두 제거
-  ['dashSite','dashMonthly'].forEach(k=>{
-    if(S.charts[k]){S.charts[k].destroy();S.charts[k]=null;}
-  });
-  if      (S.user==='강철')   renderDash강철();
-  else if (S.user==='강명구') renderDash강명구();
-  else if (S.user==='문광훈') renderDash문광훈();
-  else if (S.user==='최강현') renderDash최강현();
+  const dashContent = document.getElementById('dashContent');
+  try {
+    const now = new Date();
+    const dashDateEl = document.getElementById('dashDate');
+    if (dashDateEl) dashDateEl.textContent =
+      `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
+    // 기존 대시보드 차트 모두 제거
+    ['dashSite','dashMonthly'].forEach(k=>{
+      if(S.charts?.[k]){ try{S.charts[k].destroy();}catch(_){} S.charts[k]=null;}
+    });
+    if      (S.user==='강철')   renderDash강철();
+    else if (S.user==='강명구') renderDash강명구();
+    else if (S.user==='문광훈') renderDash문광훈();
+    else if (S.user==='최강현') renderDash최강현();
+  } catch (err) {
+    console.error('[renderDashboard] 렌더 오류 — 로그인 상태 보호됨:', err);
+    if (dashContent) dashContent.innerHTML = `<div class="alert alert-danger my-3"><i class="bi bi-exclamation-triangle"></i> 대시보드를 표시하는 중 오류가 발생했습니다.<br><small class="text-muted">${String(err && err.message || err)}</small><br><button class="btn btn-sm btn-outline-primary mt-2" onclick="renderDashboard()">다시 시도</button></div>`;
+  }
 }
 
 /* ─── 강철 (대표자) ─── */
@@ -2023,12 +2089,16 @@ function _renderSiteFilterTags(totalCount, filteredCount) {
 }
 
 function renderSiteList() {
+  const tbody = document.getElementById('siteTbody');
+  if (!tbody) return;
+  try {
   const f = _initSiteFilter();
-  document.getElementById('th-unitPrice').style.display = S.perm.canPrice?'':'none';
+  const thUnit = document.getElementById('th-unitPrice');
+  if (thUnit) thUnit.style.display = S.perm?.canPrice ? '' : 'none';
   const q = (f.text||'').toLowerCase();
   const targetW = f.width ? parseInt(f.width,10) : null;
   const targetHeights = (f.heights||[]).map(h=>parseInt(h,10)).filter(v=>v>0);
-  const filtered = S.data.sites.filter(s=>{
+  const filtered = (S.data?.sites || []).filter(s=>{
     // ① 텍스트: 현장명/시공사/구매회사
     if (q) {
       const hay = `${s.name||''} ${s.contractor||''} ${s.buyer||''}`.toLowerCase();
@@ -2087,10 +2157,21 @@ function renderSiteList() {
   });
 
   // 적용된 필터 태그 + 결과 수 렌더
-  _renderSiteFilterTags(S.data.sites.length, rows.length);
+  try { _renderSiteFilterTags(S.data?.sites?.length||0, rows.length); } catch(e){ console.warn('[renderSiteList] 필터 태그 렌더 실패:', e); }
 
-  const tbody = document.getElementById('siteTbody');
-  if (!rows.length) { tbody.innerHTML='<tr><td colspan="12" class="text-center py-4 text-muted">조건에 맞는 현장이 없습니다</td></tr>'; return; }
+  if (!rows.length) {
+    const totalSites = S.data?.sites?.length || 0;
+    if (!totalSites) {
+      tbody.innerHTML = SafeRender.emptyNoData(12, '현장이 없습니다');
+    } else {
+      // 필터/검색 결과 없음
+      const active = !!(f.text||f.width||f.heights.length||f.louverTypes.length||f.statuses.length||f.pctMin!=null||f.pctMax!=null);
+      tbody.innerHTML = active
+        ? SafeRender.emptySearch(12, f.text || '', 'resetSiteFilter()')
+        : SafeRender.emptyNoData(12, '현장이 없습니다');
+    }
+    return;
+  }
   tbody.innerHTML = rows.map(({s, dlvd, rem, pct, ft})=>{
     const sp = (s.specs||[])[0] || {};
     const wVal = sp.width  ? String(sp.width).replace(/[^0-9]/g,'')  : '';
@@ -2123,11 +2204,16 @@ function renderSiteList() {
         ` : ''}
       </td>
       <td onclick="event.stopPropagation()">
-        ${S.perm.canEditSite?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openSiteModal('${s.id}')"><i class="bi bi-pencil"></i></button>`:''}
-        ${S.perm.canDeleteSite?`<button class="btn btn-sm btn-outline-danger" onclick="deleteSite('${s.id}')"><i class="bi bi-trash"></i></button>`:''}
+        ${S.perm?.canEditSite?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openSiteModal('${s.id}')"><i class="bi bi-pencil"></i></button>`:''}
+        ${S.perm?.canDeleteSite?`<button class="btn btn-sm btn-outline-danger" onclick="deleteSite('${s.id}')"><i class="bi bi-trash"></i></button>`:''}
       </td>
     </tr>`;
   }).join('');
+  } catch (err) {
+    console.error('[renderSiteList] 검색/필터/렌더 오류 — 로그인 상태 보호됨:', err);
+    tbody.innerHTML = SafeRender.errorRow(12, err, 'resetSiteFilter()');
+    if (typeof toast === 'function') { try { toast('검색 중 오류가 발생했습니다','error'); } catch{} }
+  }
 }
 
 function openSiteDetail(id) {
@@ -3017,38 +3103,50 @@ function switchOrderTab(tab, el) {
 function renderOrderList() { renderDHList(); renderMGList(); }
 
 function renderDHList() {
-  const list=[...S.data.ordersDH].sort((a,b)=>b.date.localeCompare(a.date));
-  const tbody=document.getElementById('dhTbody');
-  if(!list.length){tbody.innerHTML='<tr><td colspan="9" class="text-center py-4 text-muted">발주 내역 없음</td></tr>';return;}
-  tbody.innerHTML=list.map(o=>`<tr>
-    <td>${o.date}</td><td>${o.item}</td><td>${o.color||'-'}</td><td>${o.spec||'-'}</td>
-    <td class="text-center">${o.qty}</td>
-    <td>${o.rcvDate||'-'}</td>
-    <td class="text-end">${S.perm.canPrice?(o.amount||0).toLocaleString()+'원':'-'}</td>
-    <td>${o.note||'-'}</td>
-    <td>${S.perm.canOrder?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDHModal('${o.id}')"><i class="bi bi-pencil"></i></button>
-      <button class="btn btn-sm btn-outline-danger" onclick="deleteDH('${o.id}')"><i class="bi bi-trash"></i></button>`:''}</td>
-  </tr>`).join('');
+  const tbody = document.getElementById('dhTbody');
+  if (!tbody) return;
+  try {
+    const list=[...(S.data?.ordersDH||[])].sort((a,b)=>(a.date||'').localeCompare ? (b.date||'').localeCompare(a.date||'') : 0);
+    if(!list.length){ tbody.innerHTML = SafeRender.emptyNoData(9,'발주 내역 없음'); return; }
+    tbody.innerHTML=list.map(o=>`<tr>
+      <td>${o.date||'-'}</td><td>${o.item||'-'}</td><td>${o.color||'-'}</td><td>${o.spec||'-'}</td>
+      <td class="text-center">${o.qty||0}</td>
+      <td>${o.rcvDate||'-'}</td>
+      <td class="text-end">${S.perm?.canPrice?(o.amount||0).toLocaleString()+'원':'-'}</td>
+      <td>${o.note||'-'}</td>
+      <td>${S.perm?.canOrder?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDHModal('${o.id}')"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteDH('${o.id}')"><i class="bi bi-trash"></i></button>`:''}</td>
+    </tr>`).join('');
+  } catch (err) {
+    console.error('[renderDHList] 렌더 오류 — 로그인 상태 보호됨:', err);
+    tbody.innerHTML = SafeRender.errorRow(9, err);
+  }
 }
 
 function renderMGList() {
-  const list=[...S.data.ordersMG].sort((a,b)=>b.date.localeCompare(a.date));
-  const tbody=document.getElementById('mgTbody');
-  if(!list.length){tbody.innerHTML='<tr><td colspan="12" class="text-center py-4 text-muted">발주 내역 없음</td></tr>';return;}
-  tbody.innerHTML=list.map(o=>`<tr>
-    <td>${o.date}</td><td>${o.item}</td><td>${o.color||'-'}</td><td>${o.spec||'-'}</td>
-    <td class="text-center">${o.qty}</td>
-    <td>${o.paintDate||'-'}</td>
-    <td>${o.actualDate||'-'}</td>
-    <td class="text-center">${o.planQty||'-'}</td>
-    <td class="text-center">${o.actualQty||0}</td>
-    <td class="text-center ${o.defectQty>0?'text-danger fw-bold':''}">${o.defectQty||0}</td>
-    <td class="text-end">${S.perm.canPrice?(o.amount||0).toLocaleString()+'원':'-'}</td>
-    <td>
-      ${S.perm.canOrder||S.perm.canInputReceive?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openMGModal('${o.id}')"><i class="bi bi-pencil"></i></button>`:''}
-      ${S.perm.canOrder?`<button class="btn btn-sm btn-outline-danger" onclick="deleteMG('${o.id}')"><i class="bi bi-trash"></i></button>`:''}
-    </td>
-  </tr>`).join('');
+  const tbody = document.getElementById('mgTbody');
+  if (!tbody) return;
+  try {
+    const list=[...(S.data?.ordersMG||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    if(!list.length){ tbody.innerHTML = SafeRender.emptyNoData(12,'발주 내역 없음'); return; }
+    tbody.innerHTML=list.map(o=>`<tr>
+      <td>${o.date||'-'}</td><td>${o.item||'-'}</td><td>${o.color||'-'}</td><td>${o.spec||'-'}</td>
+      <td class="text-center">${o.qty||0}</td>
+      <td>${o.paintDate||'-'}</td>
+      <td>${o.actualDate||'-'}</td>
+      <td class="text-center">${o.planQty||'-'}</td>
+      <td class="text-center">${o.actualQty||0}</td>
+      <td class="text-center ${o.defectQty>0?'text-danger fw-bold':''}">${o.defectQty||0}</td>
+      <td class="text-end">${S.perm?.canPrice?(o.amount||0).toLocaleString()+'원':'-'}</td>
+      <td>
+        ${S.perm?.canOrder||S.perm?.canInputReceive?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openMGModal('${o.id}')"><i class="bi bi-pencil"></i></button>`:''}
+        ${S.perm?.canOrder?`<button class="btn btn-sm btn-outline-danger" onclick="deleteMG('${o.id}')"><i class="bi bi-trash"></i></button>`:''}
+      </td>
+    </tr>`).join('');
+  } catch (err) {
+    console.error('[renderMGList] 렌더 오류 — 로그인 상태 보호됨:', err);
+    tbody.innerHTML = SafeRender.errorRow(12, err);
+  }
 }
 
 function populateItems(selId) {
@@ -3200,37 +3298,45 @@ async function deleteMG(id) {
 
 // =================== INVENTORY ===================
 function renderInventory() {
-  const items=calcInventory();
-  // summary by item name
-  const byItem={};
-  ITEMS.forEach(i=>{ byItem[i]={total:0,incoming:0,used:0,details:[]}; });
-  items.forEach(v=>{
-    if(!byItem[v.item]) byItem[v.item]={total:0,incoming:0,used:0,details:[]};
-    byItem[v.item].total+=v.stock;
-    byItem[v.item].incoming+=v.incoming;
-    byItem[v.item].used+=v.used;
-    byItem[v.item].details.push(v);
-  });
-  document.getElementById('inventoryGrid').innerHTML=Object.entries(byItem).map(([name,d])=>`
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="inv-item">
-        <div class="item-name">${name}</div>
-        <div class="d-flex align-items-end gap-1">
-          <div class="inv-qty ${d.total<0?'low':d.total===0?'text-muted':''}">${d.total}</div>
-          <small class="text-muted mb-1">개</small>
-        </div>
-        <small class="text-muted">입고 ${d.incoming} / 사용 ${d.used}</small>
-      </div>
-    </div>`).join('');
-
-  // detail table
   const detailTbody=document.getElementById('invDetailTbody');
-  if(!items.length){ detailTbody.innerHTML='<tr><td colspan="6" class="text-center py-3 text-muted">재고 내역 없음</td></tr>'; return; }
-  detailTbody.innerHTML=items.sort((a,b)=>a.item.localeCompare(b.item)).map(v=>`<tr>
-    <td>${v.item}</td><td>${v.color||'-'}</td><td>${v.spec||'-'}</td>
-    <td class="text-center">${v.incoming}</td><td class="text-center">${v.used}</td>
-    <td class="text-center fw-bold ${v.stock<0?'text-danger':v.stock===0?'text-muted':'text-primary'}">${v.stock}</td>
-  </tr>`).join('');
+  const grid=document.getElementById('inventoryGrid');
+  if (!detailTbody && !grid) return;
+  try {
+    const items=calcInventory();
+    // summary by item name
+    const byItem={};
+    ITEMS.forEach(i=>{ byItem[i]={total:0,incoming:0,used:0,details:[]}; });
+    items.forEach(v=>{
+      if(!byItem[v.item]) byItem[v.item]={total:0,incoming:0,used:0,details:[]};
+      byItem[v.item].total+=v.stock;
+      byItem[v.item].incoming+=v.incoming;
+      byItem[v.item].used+=v.used;
+      byItem[v.item].details.push(v);
+    });
+    if (grid) grid.innerHTML=Object.entries(byItem).map(([name,d])=>`
+      <div class="col-6 col-md-4 col-lg-3">
+        <div class="inv-item">
+          <div class="item-name">${name}</div>
+          <div class="d-flex align-items-end gap-1">
+            <div class="inv-qty ${d.total<0?'low':d.total===0?'text-muted':''}">${d.total}</div>
+            <small class="text-muted mb-1">개</small>
+          </div>
+          <small class="text-muted">입고 ${d.incoming} / 사용 ${d.used}</small>
+        </div>
+      </div>`).join('');
+
+    // detail table
+    if (!detailTbody) return;
+    if(!items.length){ detailTbody.innerHTML = SafeRender.emptyNoData(6,'재고 내역 없음'); return; }
+    detailTbody.innerHTML=items.sort((a,b)=>a.item.localeCompare(b.item)).map(v=>`<tr>
+      <td>${v.item}</td><td>${v.color||'-'}</td><td>${v.spec||'-'}</td>
+      <td class="text-center">${v.incoming}</td><td class="text-center">${v.used}</td>
+      <td class="text-center fw-bold ${v.stock<0?'text-danger':v.stock===0?'text-muted':'text-primary'}">${v.stock}</td>
+    </tr>`).join('');
+  } catch (err) {
+    console.error('[renderInventory] 렌더 오류 — 로그인 상태 보호됨:', err);
+    if (detailTbody) detailTbody.innerHTML = SafeRender.errorRow(6, err);
+  }
 }
 
 // =================== CUSTOMERS ===================
@@ -3243,32 +3349,38 @@ function setCustSort(col) {
 
 function renderCustomers() {
   const tbody=document.getElementById('custTbody');
-  const sort = S.custSort || {col:'name', dir:'asc'};
-  const mult = sort.dir==='asc' ? 1 : -1;
-  const list = [...S.data.customers].sort((a,b)=>{
-    if (sort.col==='name') return (a.name||'').localeCompare(b.name||'','ko') * mult;
-    return 0;
-  });
-  // 헤더 화살표 갱신 (page-cust 범위로 스코프)
-  document.querySelectorAll('#page-cust .sort-arrow').forEach(el=>{
-    el.textContent = (el.dataset.col===sort.col) ? (sort.dir==='asc'?' ▲':' ▼') : '';
-  });
-  if(!list.length){tbody.innerHTML='<tr><td colspan="10" class="text-center py-4 text-muted">거래처가 없습니다</td></tr>';return;}
-  tbody.innerHTML=list.map(c=>`<tr>
-    <td class="fw-bold">${c.name}</td>
-    <td>${c.manager||'-'}</td>
-    <td>${c.mobile||'-'}</td>
-    <td>${c.phone||'-'}</td>
-    <td>${c.fax||'-'}</td>
-    <td>${c.email||'-'}</td>
-    <td>${c.kiManager||'-'}</td>
-    <td>${c.kiTel||'-'}</td>
-    <td>${c.note||'-'}</td>
-    <td>
-      ${S.perm.canCust?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openCustModal('${c.id}')"><i class="bi bi-pencil"></i></button>
-      <button class="btn btn-sm btn-outline-danger" onclick="deleteCust('${c.id}')"><i class="bi bi-trash"></i></button>`:''}
-    </td>
-  </tr>`).join('');
+  if (!tbody) return;
+  try {
+    const sort = S.custSort || {col:'name', dir:'asc'};
+    const mult = sort.dir==='asc' ? 1 : -1;
+    const list = [...(S.data?.customers||[])].sort((a,b)=>{
+      if (sort.col==='name') return (a.name||'').localeCompare(b.name||'','ko') * mult;
+      return 0;
+    });
+    // 헤더 화살표 갱신 (page-cust 범위로 스코프)
+    document.querySelectorAll('#page-cust .sort-arrow').forEach(el=>{
+      el.textContent = (el.dataset.col===sort.col) ? (sort.dir==='asc'?' ▲':' ▼') : '';
+    });
+    if(!list.length){ tbody.innerHTML = SafeRender.emptyNoData(10,'거래처가 없습니다'); return; }
+    tbody.innerHTML=list.map(c=>`<tr>
+      <td class="fw-bold">${c.name}</td>
+      <td>${c.manager||'-'}</td>
+      <td>${c.mobile||'-'}</td>
+      <td>${c.phone||'-'}</td>
+      <td>${c.fax||'-'}</td>
+      <td>${c.email||'-'}</td>
+      <td>${c.kiManager||'-'}</td>
+      <td>${c.kiTel||'-'}</td>
+      <td>${c.note||'-'}</td>
+      <td>
+        ${S.perm?.canCust?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openCustModal('${c.id}')"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteCust('${c.id}')"><i class="bi bi-trash"></i></button>`:''}
+      </td>
+    </tr>`).join('');
+  } catch (err) {
+    console.error('[renderCustomers] 렌더 오류 — 로그인 상태 보호됨:', err);
+    tbody.innerHTML = SafeRender.errorRow(10, err);
+  }
 }
 
 function openCustModal(id) {
@@ -3393,8 +3505,10 @@ function parseYYYYMM(v) {
 }
 
 function renderSchedule() {
-  const sites = S.data.sites, dlvs = S.data.deliveries;
   const tableEl = document.getElementById('schTable');
+  if (!tableEl) return;
+  try {
+  const sites = S.data?.sites || [], dlvs = S.data?.deliveries || [];
   // 1) 데이터 로드 여부 체크
   if (!sites.length && !dlvs.length) {
     tableEl.innerHTML = `<thead><tr><th class="text-center py-4" style="color:#94a3b8">구글시트에서 데이터를 불러오는 중입니다. Google 연결을 확인해주세요.</th></tr></thead>`;
@@ -3633,6 +3747,10 @@ function renderSchedule() {
     </div>`;
   }
   setTimeout(enableAllTableResize, 0);
+  } catch (err) {
+    console.error('[renderSchedule] 렌더 오류 — 로그인 상태 보호됨:', err);
+    if (tableEl) tableEl.innerHTML = `<thead><tr><th class="text-center py-4" style="color:#dc2626"><i class="bi bi-exclamation-triangle"></i> 표시 중 오류가 발생했습니다. 필터를 초기화하거나 새로고침해 주세요.<br><small class="text-muted">${String(err && err.message || err)}</small></th></tr></thead>`;
+  }
 }
 
 // ===== 현장 상세 - 마감자재 납품 이력 정렬 =====
@@ -3661,16 +3779,18 @@ function setInvDetailSort(col) {
 }
 
 function renderInvoice() {
+  const body = document.getElementById('invoiceBody');
+  if (!body) return;
+  try {
   populateStatYearMonth();
   const y = +document.getElementById('invYear').value;
   const m = +document.getElementById('invMonth').value;
-  const body = document.getElementById('invoiceBody');
   if (!y || !m) { body.innerHTML=''; return; }
   const monthKey = `${y}-${String(m).padStart(2,'0')}`;
-  const canPrice = !!S.perm.canPrice;
-  const sitesByName = {}; S.data.sites.forEach(s=>{ if(!sitesByName[s.name]) sitesByName[s.name] = s; });
+  const canPrice = !!S.perm?.canPrice;
+  const sitesByName = {}; (S.data?.sites||[]).forEach(s=>{ if(!sitesByName[s.name]) sitesByName[s.name] = s; });
 
-  const monthDlvs = S.data.deliveries.filter(d=>d.date && d.date.startsWith(monthKey));
+  const monthDlvs = (S.data?.deliveries||[]).filter(d=>d.date && d.date.startsWith(monthKey));
 
   // 각 납품에 청구금액 미리 계산
   monthDlvs.forEach(d=>{
@@ -3806,6 +3926,10 @@ function renderInvoice() {
         </div>`}
     </div>`;
   setTimeout(enableAllTableResize, 0);
+  } catch (err) {
+    console.error('[renderInvoice] 렌더 오류 — 로그인 상태 보호됨:', err);
+    if (body) body.innerHTML = `<div class="alert alert-danger my-3"><i class="bi bi-exclamation-triangle"></i> 마감 내역서를 표시하는 중 오류가 발생했습니다.<br><small class="text-muted">${String(err && err.message || err)}</small></div>`;
+  }
 }
 
 function printInvoice() {
@@ -3818,29 +3942,32 @@ function printInvoice() {
 }
 
 function renderStats() {
+  try {
   // 탭 초기 상태 (통계 기본, 스케줄은 탭 전환 시 렌더)
   switchStatsTab('stats', document.querySelector('#statsTabs .nav-link'));
-  const sites=S.data.sites, dlvs=S.data.deliveries;
-  const totalDlvd=dlvs.reduce((s,d)=>s+d.qty,0);
+  const sites=S.data?.sites||[], dlvs=S.data?.deliveries||[];
+  const totalDlvd=dlvs.reduce((s,d)=>s+(d.qty||0),0);
   const totalCostAll=dlvs.reduce((s,d)=>s+(d.cost||0),0);
-  const totalRev=S.perm.canPrice?sites.reduce((s,site)=>{
+  const canPrice = !!S.perm?.canPrice;
+  const totalRev=canPrice?sites.reduce((s,site)=>{
     const dlvd=totalDelivered(site.id);
     return s+dlvd*(site.unitPrice||0);
   },0):null;
-  const totalDHCost=S.perm.canPrice?S.data.ordersDH.reduce((s,o)=>s+(o.amount||0),0):null;
-  const totalMGCost=S.perm.canPrice?S.data.ordersMG.reduce((s,o)=>s+(o.amount||0),0):null;
+  const totalDHCost=canPrice?(S.data?.ordersDH||[]).reduce((s,o)=>s+(o.amount||0),0):null;
+  const totalMGCost=canPrice?(S.data?.ordersMG||[]).reduce((s,o)=>s+(o.amount||0),0):null;
 
   const cards=[
     {label:'전체 납품 수량',val:totalDlvd+'개',color:'#3b82f6'},
     {label:'전체 현장 수',val:sites.length+'개',color:'#10b981'},
-    ...(S.perm.canPrice?[
+    ...(canPrice?[
       {label:'예상 매출 합계',val:totalRev.toLocaleString()+'원',color:'#f59e0b'},
       {label:'납품 비용 합계',val:totalCostAll.toLocaleString()+'원',color:'#ef4444'},
       {label:'대흥알루미늄 발주금액',val:totalDHCost.toLocaleString()+'원',color:'#8b5cf6'},
       {label:'미광사 발주금액',val:totalMGCost.toLocaleString()+'원',color:'#06b6d4'},
     ]:[])
   ];
-  document.getElementById('statsCards').innerHTML=cards.map(c=>`
+  const statsCardsEl = document.getElementById('statsCards');
+  if (statsCardsEl) statsCardsEl.innerHTML=cards.map(c=>`
     <div class="col-6 col-lg-3">
       <div class="card p-3 text-center">
         <div style="font-size:1.5rem;font-weight:800;color:${c.color}">${c.val}</div>
@@ -3848,15 +3975,16 @@ function renderStats() {
       </div>
     </div>`).join('');
 
-  document.getElementById('statsRevenueChart').style.display=S.perm.canPrice?'':'none';
+  const revChartEl = document.getElementById('statsRevenueChart');
+  if (revChartEl) revChartEl.style.display=canPrice?'':'none';
   // destroy old charts
-  ['monthly','type','rev'].forEach(k=>{ if(S.charts[k]){S.charts[k].destroy();S.charts[k]=null;} });
+  ['monthly','type','rev'].forEach(k=>{ if(S.charts?.[k]){ try{S.charts[k].destroy();}catch(_){} S.charts[k]=null;} });
 
   // Monthly delivery chart
   const ctx1=document.getElementById('chartMonthlyDelivery');
   if(ctx1){
     const monthly={};
-    dlvs.forEach(d=>{if(d.date){const ym=d.date.slice(0,7);monthly[ym]=(monthly[ym]||0)+d.qty;}});
+    dlvs.forEach(d=>{if(d.date){const ym=d.date.slice(0,7);monthly[ym]=(monthly[ym]||0)+(d.qty||0);}});
     const labels=Object.keys(monthly).sort().slice(-12);
     S.charts.monthly=new Chart(ctx1,{
       type:'bar',
@@ -3877,7 +4005,7 @@ function renderStats() {
     });
   }
   // Revenue chart
-  if(S.perm.canPrice){
+  if(canPrice){
     const ctx3=document.getElementById('chartRevenue');
     if(ctx3){
       const mData={};
@@ -3887,7 +4015,7 @@ function renderStats() {
         if(!mData[ym]) mData[ym]={cost:0,rev:0};
         mData[ym].cost+=(d.cost||0);
         const site=sites.find(s=>s.siteId===d.siteId||s.id===d.siteId);
-        if(site) mData[ym].rev+=d.qty*(site.unitPrice||0);
+        if(site) mData[ym].rev+=(d.qty||0)*(site.unitPrice||0);
       });
       const labels=Object.keys(mData).sort().slice(-12);
       S.charts.rev=new Chart(ctx3,{
@@ -3902,7 +4030,7 @@ function renderStats() {
   }
   // Site progress
   const prog=document.getElementById('siteProgressList');
-  prog.innerHTML=sites.map(s=>{
+  if (prog) prog.innerHTML=sites.map(s=>{
     const dlvd=totalDelivered(s.id);
     const pct=s.qty>0?Math.min(100,Math.round(dlvd/s.qty*100)):0;
     return `<div class="mb-3">
@@ -3913,6 +4041,11 @@ function renderStats() {
       <div class="progress"><div class="progress-bar ${pct>=100?'bg-success':'bg-primary'}" style="width:${pct}%"></div></div>
     </div>`;
   }).join('')||'<p class="text-muted text-center py-3">현장 없음</p>';
+  } catch (err) {
+    console.error('[renderStats] 렌더 오류 — 로그인 상태 보호됨:', err);
+    const statsCardsEl = document.getElementById('statsCards');
+    if (statsCardsEl) statsCardsEl.innerHTML = `<div class="col-12"><div class="alert alert-danger my-2"><i class="bi bi-exclamation-triangle"></i> 통계를 표시하는 중 오류가 발생했습니다.<br><small class="text-muted">${String(err && err.message || err)}</small></div></div>`;
+  }
 }
 
 // =================== UTILS ===================
