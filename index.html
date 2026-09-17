@@ -215,6 +215,7 @@ tbody tr:hover{background:#f8fafc}
     <div class="sidebar-user">
       <div class="uname" id="sidebarUserName"></div>
       <div class="urole" id="sidebarUserRole"></div>
+      <button class="btn btn-sm btn-outline-secondary mt-2 w-100" onclick="openPwModal()"><i class="bi bi-key"></i> 비밀번호 변경</button>
       <button class="btn btn-sm btn-outline-secondary mt-2 w-100" onclick="logout()">로그아웃</button>
     </div>
   </nav>
@@ -713,6 +714,27 @@ tbody tr:hover{background:#f8fafc}
 </div>
 
 <!-- 거래처 Modal -->
+<div class="modal fade" id="pwModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">비밀번호 변경</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2"><label class="form-label">현재 비밀번호</label><input type="password" class="form-control" id="pw_cur" maxlength="20"></div>
+        <div class="mb-2"><label class="form-label">새 비밀번호 (4~20자)</label><input type="password" class="form-control" id="pw_new" maxlength="20"></div>
+        <div class="mb-2"><label class="form-label">새 비밀번호 확인</label><input type="password" class="form-control" id="pw_new2" maxlength="20"></div>
+        <div id="pw_msg" style="color:#dc2626;font-size:.8rem;min-height:1.2em"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-lucy" id="pw_saveBtn" onclick="changePassword()">변경</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="custModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -772,6 +794,12 @@ const USERS = {
     canEditDelivery:true, canDeleteDelivery:false,
     canEditDeliveryCost:true, canViewDeliveryCost:true,
     canOrder:false, canInputReceive:true, canViewDefect:false,
+    canCust:false, canStats:true },
+  '강선구': { role:'공장담당', pw:'0000',
+    canPrice:false, canEditSite:false, canDeleteSite:false,
+    canEditDelivery:true, canDeleteDelivery:false,
+    canEditDeliveryCost:false, canViewDeliveryCost:true,
+    canOrder:false, canInputReceive:true, canViewDefect:false,
     canCust:false, canStats:true }
 };
 
@@ -807,7 +835,7 @@ let gisClient = null;
 // =================== LOGIN ===================
 function initLogin() {
   const wrap = document.getElementById('userButtons');
-  const colors = ['#3b82f6','#10b981','#f59e0b','#8b5cf6'];
+  const colors = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444'];
   Object.keys(USERS).forEach((name, i) => {
     const u = USERS[name];
     const btn = document.createElement('button');
@@ -834,19 +862,134 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('pwSection').style.display !== 'none') doLogin();
 });
 
+// 로그인 흐름: 비밀번호 입력 → Google 로그인 → 시트(계정)에서 비밀번호 확인 → 앱 진입
+let pendingPw = null;
+let loginBusy = false;
+
+function setLoginMsg(msg, isError) {
+  const e = document.getElementById('pwError');
+  e.textContent = msg;
+  e.style.color = isError ? '#dc2626' : '#475569';
+  e.style.display = msg ? 'block' : 'none';
+}
+
 function doLogin() {
-  if (!selectedUser) return;
+  if (!selectedUser || loginBusy) return;
   const pw = document.getElementById('pwInput').value;
-  if (pw === USERS[selectedUser].pw) {
-    S.user = selectedUser;
-    S.perm = USERS[selectedUser];
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    initApp();
-  } else {
-    document.getElementById('pwError').style.display = 'block';
+  if (!pw) { setLoginMsg('비밀번호를 입력하세요.', true); return; }
+  pendingPw = pw;
+  loginBusy = true;
+  setLoginMsg('Google 로그인 후 비밀번호를 확인합니다…', false);
+  if (S.googleToken) { verifyLogin(); return; }
+  initGoogleAuth();
+}
+
+async function verifyLogin() {
+  const ok = await checkPassword(selectedUser, pendingPw);
+  pendingPw = null;
+  loginBusy = false;
+  if (ok === null) {
+    S.googleToken = null;
+    setLoginMsg('시트 연결에 실패했습니다. 다시 시도하세요.', true);
+    return;
+  }
+  if (!ok) {
+    setLoginMsg('비밀번호가 틀렸습니다.', true);
     document.getElementById('pwInput').value = '';
     document.getElementById('pwInput').focus();
+    return;
+  }
+  setLoginMsg('', false);
+  S.user = selectedUser;
+  S.perm = USERS[selectedUser];
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  initApp();
+  document.getElementById('googleConnectBanner').style.display = 'none';
+  toast('Google Sheets 연결 완료', 'success');
+  loadAll();
+}
+
+// =================== 비밀번호 (시트 '계정'에 저장) ===================
+// 시트 구조: A=이름, B=비밀번호해시(SHA-256), C=변경일시
+// 시트에 기록이 없는 사용자는 기본 비밀번호(USERS의 pw)로 로그인
+const PW_SHEET = '계정';
+
+async function hashPw(name, pw) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('lucy:' + name + ':' + pw));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 반환: { exists:시트존재여부, rows:[[이름,해시,일시],...] } / 통신 실패 시 null
+async function readPwSheet() {
+  if (!S.googleToken) return null;
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(PW_SHEET + '!A:C')}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${S.googleToken}` } });
+    if (res.status === 400) return { exists: false, rows: [] };   // 시트 없음
+    if (!res.ok) return null;
+    const j = await res.json();
+    return { exists: true, rows: j.values || [] };
+  } catch (e) { return null; }
+}
+
+async function checkPassword(name, pw) {
+  const r = await readPwSheet();
+  if (!r) return null;
+  const row = r.rows.find(x => x[0] === name && x[1]);
+  if (!row) return pw === USERS[name].pw;
+  return (await hashPw(name, pw)) === row[1];
+}
+
+async function ensurePwSheet() {
+  const r = await readPwSheet();
+  if (!r) return null;
+  if (r.exists) return r;
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${S.googleToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: PW_SHEET } } }] })
+  });
+  if (!res.ok) return null;
+  await apiRequest('PUT', `${PW_SHEET}!A1:C1`, [['이름', '비밀번호해시', '변경일시']], { valueInputOption: 'RAW' });
+  return { exists: true, rows: [['이름', '비밀번호해시', '변경일시']] };
+}
+
+function openPwModal() {
+  ['pw_cur', 'pw_new', 'pw_new2'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pw_msg').textContent = '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('pwModal')).show();
+}
+
+async function changePassword() {
+  const msg = document.getElementById('pw_msg');
+  const btn = document.getElementById('pw_saveBtn');
+  const cur = document.getElementById('pw_cur').value;
+  const nw = document.getElementById('pw_new').value;
+  const nw2 = document.getElementById('pw_new2').value;
+  msg.textContent = '';
+  if (!S.googleToken) { msg.textContent = 'Google 연결 후 다시 시도하세요.'; return; }
+  if (nw.length < 4) { msg.textContent = '새 비밀번호는 4자 이상이어야 합니다.'; return; }
+  if (nw !== nw2) { msg.textContent = '새 비밀번호가 서로 다릅니다.'; return; }
+  if (nw === cur) { msg.textContent = '현재 비밀번호와 같습니다.'; return; }
+  btn.disabled = true;
+  try {
+    const ok = await checkPassword(S.user, cur);
+    if (ok === null) { msg.textContent = '시트 연결 실패. 다시 시도하세요.'; return; }
+    if (!ok) { msg.textContent = '현재 비밀번호가 틀렸습니다.'; return; }
+    const r = await ensurePwSheet();
+    if (!r) { msg.textContent = '계정 시트를 만들지 못했습니다.'; return; }
+    const hash = await hashPw(S.user, nw);
+    const now = new Date().toLocaleString('ko-KR');
+    const idx = r.rows.findIndex(x => x[0] === S.user);
+    const res = idx >= 0
+      ? await apiRequest('PUT', `${PW_SHEET}!A${idx + 1}:C${idx + 1}`, [[S.user, hash, now]], { valueInputOption: 'RAW' })
+      : await apiRequest('POST', `${PW_SHEET}!A:C`, [[S.user, hash, now]], { valueInputOption: 'RAW' });
+    if (!res || res.error) { msg.textContent = '저장 실패. 다시 시도하세요.'; return; }
+    bootstrap.Modal.getInstance(document.getElementById('pwModal')).hide();
+    toast('비밀번호가 변경되었습니다. 다음 로그인부터 적용됩니다.', 'success');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -872,7 +1015,6 @@ function initApp() {
   buildNav();
   applyPermUI();
   showPage('dashboard');
-  initGoogleAuth();
 }
 
 function buildNav() {
@@ -947,28 +1089,44 @@ function closeSidebar() {
 }
 
 // =================== GOOGLE AUTH ===================
-function initGoogleAuth() {
+function loadGis(cb, onErr) {
+  if (window.google?.accounts?.oauth2) { cb(); return; }
   const s = document.createElement('script');
   s.src = 'https://accounts.google.com/gsi/client';
-  s.onload = () => {
-    gisClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID, scope: SCOPES,
-      callback: resp => {
-        if (resp.access_token) {
-          S.googleToken = resp.access_token;
-          document.getElementById('googleConnectBanner').style.display = 'none';
-          toast('Google Sheets 연결 완료', 'success');
-          loadAll();
-        }
-      }
-    });
-    document.getElementById('googleConnectBanner').style.display = 'flex';
-    gisClient.requestAccessToken();
-  };
-  s.onerror = () => {
-    document.getElementById('googleConnectBanner').style.display = 'flex';
-  };
+  s.onload = cb;
+  s.onerror = onErr;
   document.head.appendChild(s);
+}
+
+function onGoogleToken(resp) {
+  if (!resp.access_token) { onGoogleError(); return; }
+  S.googleToken = resp.access_token;
+  if (!S.user) { verifyLogin(); return; }   // 로그인 중
+  document.getElementById('googleConnectBanner').style.display = 'none';
+  toast('Google Sheets 연결 완료', 'success');
+  loadAll();
+}
+
+function onGoogleError() {
+  if (!S.user) {
+    loginBusy = false; pendingPw = null;
+    setLoginMsg('Google 로그인이 취소되었거나 실패했습니다.', true);
+  } else {
+    document.getElementById('googleConnectBanner').style.display = 'flex';
+  }
+}
+
+function initGoogleAuth() {
+  loadGis(() => {
+    if (!gisClient) {
+      gisClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID, scope: SCOPES,
+        callback: onGoogleToken,
+        error_callback: onGoogleError
+      });
+    }
+    gisClient.requestAccessToken();
+  }, onGoogleError);
 }
 
 async function apiRequest(method, range, body, cfg) {
@@ -1377,7 +1535,7 @@ function renderDashboard() {
     if      (S.user==='강철')   renderDash강철();
     else if (S.user==='강명구') renderDash강명구();
     else if (S.user==='문광훈') renderDash문광훈();
-    else if (S.user==='최강현') renderDash최강현();
+    else if (S.user==='최강현' || S.user==='강선구') renderDash최강현();
   } catch (err) {
     console.error('[renderDashboard] 렌더 오류 — 로그인 상태 보호됨:', err);
     if (dashContent) dashContent.innerHTML = `<div class="alert alert-danger my-3"><i class="bi bi-exclamation-triangle"></i> 대시보드를 표시하는 중 오류가 발생했습니다.<br><small class="text-muted">${String(err && err.message || err)}</small><br><button class="btn btn-sm btn-outline-primary mt-2" onclick="renderDashboard()">다시 시도</button></div>`;
@@ -4200,6 +4358,7 @@ window.addEventListener('resize', () => {
 });
 
 initLogin();
+loadGis(() => {}, () => {});
 </script>
 </body>
 </html>
