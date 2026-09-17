@@ -979,55 +979,45 @@ async function ensureSheet(title, header) {
   } catch (e) { return false; }
 }
 
-// =================== 접속 기록 (시트 '접속기록') ===================
-// A=이름 B=직함 C=로그인 D=마지막활동 E=로그아웃 F=체류(분) G=종료방식
+// =================== 접속 기록 (비공개 시트 + Apps Script) ===================
+// 기록 쓰기: 모든 사용자 → Apps Script 웹앱(강철 권한으로 실행)으로 전송만 함
+// 기록 읽기: 강철 계정의 구글 토큰으로 비공개 시트를 직접 읽음 (다른 계정은 접근 불가)
+const LOG_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw_S-CA32382BcwqDpLn0cyIwO5AE8ELmXOJjokbHzOp4hC39j_MabbxkI4F4oQplVX/exec';        // ← Apps Script 웹앱 URL (https://script.google.com/macros/s/.../exec)
+const LOG_SPREADSHEET_ID = '1DXuSMDIe13q3t02BKlcHRgE9B8a2-tqvwFEAwNeZvSw';    // ← 비공개 접속기록 시트 ID
 const LOG_SHEET = '접속기록';
-const LOG_HEADER = ['이름', '직함', '로그인', '마지막활동', '로그아웃', '체류(분)', '종료방식'];
 const LOG_BEAT_MS = 5 * 60 * 1000;
-const ACC = { row: null, start: null, timer: null };
+const ACC = { sid: null, timer: null };
 
 function fmtDT(d) {
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-// 로그 행 갱신 (D~G). keepalive: 창을 닫는 순간에도 전송되도록
-function writeLogRow(endType, keepalive) {
-  if (!ACC.row || !S.googleToken) return;
-  const now = new Date();
-  const mins = Math.max(0, Math.round((now - ACC.start) / 60000));
-  const vals = [[fmtDT(now), endType ? fmtDT(now) : '', mins, endType || '']];
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(`${LOG_SHEET}!D${ACC.row}:G${ACC.row}`)}?valueInputOption=RAW`;
+function sendLog(payload) {
+  if (!LOG_WEBAPP_URL) return;
+  const body = JSON.stringify(payload);
   try {
-    fetch(url, { method: 'PUT', keepalive: !!keepalive,
-      headers: { Authorization: `Bearer ${S.googleToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: vals }) }).catch(() => {});
+    if (navigator.sendBeacon && navigator.sendBeacon(LOG_WEBAPP_URL, new Blob([body], { type: 'text/plain' }))) return;
+  } catch (e) {}
+  try {
+    fetch(LOG_WEBAPP_URL, { method: 'POST', mode: 'no-cors', keepalive: true,
+      headers: { 'Content-Type': 'text/plain' }, body }).catch(() => {});
   } catch (e) {}
 }
 
-async function startAccessLog() {
-  try {
-    if (!(await ensureSheet(LOG_SHEET, LOG_HEADER))) return;
-    ACC.start = new Date();
-    const t = fmtDT(ACC.start);
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(LOG_SHEET + '!A:G')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-    const res = await fetch(url, { method: 'POST',
-      headers: { Authorization: `Bearer ${S.googleToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [[S.user, S.perm.role, t, t, '', 0, '']] }) });
-    const j = await res.json();
-    const m = /![A-Z]+(\d+)/.exec(j?.updates?.updatedRange || '');
-    if (!m) return;
-    ACC.row = +m[1];
-    clearInterval(ACC.timer);
-    ACC.timer = setInterval(() => writeLogRow('', false), LOG_BEAT_MS);
-  } catch (e) {}
+function startAccessLog() {
+  if (!LOG_WEBAPP_URL || !S.user) return;
+  ACC.sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  sendLog({ action: 'start', sid: ACC.sid, name: S.user, role: S.perm.role });
+  clearInterval(ACC.timer);
+  ACC.timer = setInterval(() => sendLog({ action: 'beat', sid: ACC.sid }), LOG_BEAT_MS);
 }
 
 function endAccessLog(endType) {
-  if (!ACC.row) return;
+  if (!ACC.sid) return;
   clearInterval(ACC.timer);
-  writeLogRow(endType, true);
-  ACC.row = null; ACC.start = null; ACC.timer = null;
+  sendLog({ action: 'end', sid: ACC.sid, type: endType });
+  ACC.sid = null; ACC.timer = null;
 }
 
 window.addEventListener('pagehide', () => endAccessLog('창닫음'));
@@ -1044,7 +1034,14 @@ async function renderAccessLog() {
   if (!S.perm?.canViewLog) return;
   const tb = document.getElementById('logTbody');
   if (!S.googleToken) { tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Google 연결 후 표시됩니다.</td></tr>'; return; }
-  const r = await apiRequest('GET', `${LOG_SHEET}!A2:G`);
+  if (!LOG_SPREADSHEET_ID) { tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">접속기록 시트가 아직 연결되지 않았습니다.</td></tr>'; return; }
+  let r = null;
+  try {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${LOG_SPREADSHEET_ID}/values/${encodeURIComponent(LOG_SHEET + '!A2:G')}`,
+      { headers: { Authorization: `Bearer ${S.googleToken}` } });
+    if (!res.ok) { tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">접속기록 시트를 읽을 권한이 없습니다.</td></tr>'; return; }
+    r = await res.json();
+  } catch (e) { tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">네트워크 오류</td></tr>'; return; }
   const now = Date.now();
   accessLogRows = (r?.values || []).filter(x => x[0]).map(x => {
     const last = String(x[3] || ''), out = String(x[4] || '');
