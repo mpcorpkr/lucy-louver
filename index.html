@@ -791,15 +791,15 @@ const USERS = {
     canCust:true, canStats:true },
   '최강현': { role:'공장장',   pw:'0000',
     canPrice:false, canEditSite:false, canDeleteSite:false,
-    canEditDelivery:true, canDeleteDelivery:false,
+    canEditDelivery:true, canDeleteDelivery:true,
     canEditDeliveryCost:true, canViewDeliveryCost:true,
-    canOrder:false, canInputReceive:true, canViewDefect:false,
+    canOrder:false, canInputReceive:false, canViewDefect:false,
     canCust:false, canStats:true },
   '강선구': { role:'공장담당', pw:'0000',
     canPrice:false, canEditSite:false, canDeleteSite:false,
-    canEditDelivery:true, canDeleteDelivery:false,
+    canEditDelivery:true, canDeleteDelivery:true,
     canEditDeliveryCost:false, canViewDeliveryCost:true,
-    canOrder:false, canInputReceive:true, canViewDefect:false,
+    canOrder:false, canInputReceive:false, canViewDefect:false,
     canCust:false, canStats:true }
 };
 
@@ -3439,7 +3439,18 @@ async function saveMG() {
   ];
   if(S.editingIds.mg){
     const o=S.data.ordersMG.find(x=>x.id===S.editingIds.mg);
-    if(o) await apiRequest('PUT',`${SH.MG}!A${o._row}:Q${o._row}`,[row]);
+    if(o){
+      // 권한 없는 사용자(공장장·공장담당)가 입고 입력할 때 발주금액·불량내용·보고일이
+      // 0/빈칸으로 덮어써지지 않도록 시트의 기존 값을 그대로 유지
+      if(!S.perm.canPrice || !S.perm.canViewDefect){
+        const cur=await apiRequest('GET',`${SH.MG}!A${o._row}:Q${o._row}`);
+        const old=cur?.values?.[0];
+        if(!old){ toast('기존 데이터를 읽지 못했습니다. 다시 시도하세요.','error'); return; }
+        if(!S.perm.canPrice)      row[14]=old[14]??'';
+        if(!S.perm.canViewDefect){ row[11]=old[11]??''; row[12]=old[12]??''; }
+      }
+      await apiRequest('PUT',`${SH.MG}!A${o._row}:Q${o._row}`,[row]);
+    }
   } else { await apiRequest('POST',`${SH.MG}!A:Q`,[row]); }
   bootstrap.Modal.getInstance(document.getElementById('mgModal'))?.hide();
   toast('저장되었습니다','success');
