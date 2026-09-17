@@ -463,6 +463,25 @@ tbody tr:hover{background:#f8fafc}
         <div class="card p-3" id="invoiceBody"></div>
       </div>
     </div>
+    <!-- 접속 기록 (대표자 전용) -->
+    <div id="page-accesslog" class="page-section">
+      <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="page-title">접속 기록</div>
+        <div class="d-flex gap-2">
+          <select class="form-select form-select-sm" id="logUserFilter" style="width:auto" onchange="renderAccessLogTable()"></select>
+          <input type="month" class="form-control form-control-sm" id="logMonthFilter" style="width:auto" onchange="renderAccessLogTable()">
+          <button class="btn btn-sm btn-outline-secondary" onclick="renderAccessLog()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+      <div id="logSummary" class="mb-3"></div>
+      <div class="card">
+        <div class="table-responsive"><table class="table table-hover mb-0">
+          <thead><tr><th>이름</th><th>직함</th><th>로그인</th><th>나감</th><th class="text-end">체류시간</th><th>종료 방식</th></tr></thead>
+          <tbody id="logTbody"><tr><td colspan="6" class="text-center text-muted py-4">불러오는 중…</td></tr></tbody>
+        </table></div>
+      </div>
+      <div class="text-muted mt-2" style="font-size:.78rem">※ 창을 그냥 닫거나 PC가 꺼진 경우, 마지막 활동 시각(5분 단위)을 나간 시각으로 봅니다.</div>
+    </div>
   </main>
 </div>
 
@@ -776,7 +795,7 @@ const USERS = {
     canEditDelivery:true, canDeleteDelivery:true,
     canEditDeliveryCost:true, canViewDeliveryCost:true,
     canOrder:true, canInputReceive:false, canViewDefect:true,
-    canCust:true, canStats:true },
+    canCust:true, canStats:true, canViewLog:true },
   '강명구': { role:'기성담당', pw:'0000',
     canPrice:true, canEditSite:true, canDeleteSite:true,
     canEditDelivery:true, canDeleteDelivery:true,
@@ -815,6 +834,7 @@ const MENUS = [
   { id:'inventory', icon:'bi-boxes',        label:'재고 관리',   always:true },
   { id:'cust',      icon:'bi-people',       label:'거래처 관리', perm:'canCust' },
   { id:'stats',     icon:'bi-bar-chart-line',label:'통계/리포트',perm:'canStats' },
+  { id:'accesslog', icon:'bi-clock-history', label:'접속 기록',   perm:'canViewLog' },
 ];
 
 // =================== STATE ===================
@@ -908,6 +928,7 @@ async function verifyLogin() {
   document.getElementById('googleConnectBanner').style.display = 'none';
   toast('Google Sheets 연결 완료', 'success');
   loadAll();
+  startAccessLog();
 }
 
 // =================== 비밀번호 (시트 '계정'에 저장) ===================
@@ -939,6 +960,128 @@ async function checkPassword(name, pw) {
   const row = r.rows.find(x => x[0] === name && x[1]);
   if (!row) return pw === USERS[name].pw;
   return (await hashPw(name, pw)) === row[1];
+}
+
+// 시트가 없으면 만들고 헤더를 넣음. 성공 시 true
+async function ensureSheet(title, header) {
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}`;
+  const h = { Authorization: `Bearer ${S.googleToken}`, 'Content-Type': 'application/json' };
+  try {
+    const r = await fetch(`${base}/values/${encodeURIComponent(title + '!A1:A1')}`, { headers: h });
+    if (r.ok) return true;
+    if (r.status !== 400) return false;
+    const a = await fetch(`${base}:batchUpdate`, { method: 'POST', headers: h,
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }) });
+    if (!a.ok) return false;
+    await fetch(`${base}/values/${encodeURIComponent(title + '!A1')}?valueInputOption=RAW`, { method: 'PUT', headers: h,
+      body: JSON.stringify({ values: [header] }) });
+    return true;
+  } catch (e) { return false; }
+}
+
+// =================== 접속 기록 (시트 '접속기록') ===================
+// A=이름 B=직함 C=로그인 D=마지막활동 E=로그아웃 F=체류(분) G=종료방식
+const LOG_SHEET = '접속기록';
+const LOG_HEADER = ['이름', '직함', '로그인', '마지막활동', '로그아웃', '체류(분)', '종료방식'];
+const LOG_BEAT_MS = 5 * 60 * 1000;
+const ACC = { row: null, start: null, timer: null };
+
+function fmtDT(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 로그 행 갱신 (D~G). keepalive: 창을 닫는 순간에도 전송되도록
+function writeLogRow(endType, keepalive) {
+  if (!ACC.row || !S.googleToken) return;
+  const now = new Date();
+  const mins = Math.max(0, Math.round((now - ACC.start) / 60000));
+  const vals = [[fmtDT(now), endType ? fmtDT(now) : '', mins, endType || '']];
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(`${LOG_SHEET}!D${ACC.row}:G${ACC.row}`)}?valueInputOption=RAW`;
+  try {
+    fetch(url, { method: 'PUT', keepalive: !!keepalive,
+      headers: { Authorization: `Bearer ${S.googleToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: vals }) }).catch(() => {});
+  } catch (e) {}
+}
+
+async function startAccessLog() {
+  try {
+    if (!(await ensureSheet(LOG_SHEET, LOG_HEADER))) return;
+    ACC.start = new Date();
+    const t = fmtDT(ACC.start);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(LOG_SHEET + '!A:G')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+    const res = await fetch(url, { method: 'POST',
+      headers: { Authorization: `Bearer ${S.googleToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[S.user, S.perm.role, t, t, '', 0, '']] }) });
+    const j = await res.json();
+    const m = /![A-Z]+(\d+)/.exec(j?.updates?.updatedRange || '');
+    if (!m) return;
+    ACC.row = +m[1];
+    clearInterval(ACC.timer);
+    ACC.timer = setInterval(() => writeLogRow('', false), LOG_BEAT_MS);
+  } catch (e) {}
+}
+
+function endAccessLog(endType) {
+  if (!ACC.row) return;
+  clearInterval(ACC.timer);
+  writeLogRow(endType, true);
+  ACC.row = null; ACC.start = null; ACC.timer = null;
+}
+
+window.addEventListener('pagehide', () => endAccessLog('창닫음'));
+
+function fmtDur(m) {
+  m = +m || 0;
+  const h = Math.floor(m / 60), mm = m % 60;
+  return h ? `${h}시간 ${mm}분` : `${mm}분`;
+}
+
+let accessLogRows = [];
+
+async function renderAccessLog() {
+  if (!S.perm?.canViewLog) return;
+  const tb = document.getElementById('logTbody');
+  if (!S.googleToken) { tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Google 연결 후 표시됩니다.</td></tr>'; return; }
+  const r = await apiRequest('GET', `${LOG_SHEET}!A2:G`);
+  const now = Date.now();
+  accessLogRows = (r?.values || []).filter(x => x[0]).map(x => {
+    const last = String(x[3] || ''), out = String(x[4] || '');
+    const lastMs = new Date(last.replace(' ', 'T')).getTime();
+    let endType = String(x[6] || '');
+    if (!out && !endType) endType = (now - lastMs < LOG_BEAT_MS + 90000) ? '접속 중' : '기록 끊김';
+    return { name: String(x[0]), role: String(x[1] || ''), login: String(x[2] || ''),
+             out: out || last, mins: +x[5] || 0, endType };
+  }).reverse();
+  const sel = document.getElementById('logUserFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">전체 사용자</option>' + Object.keys(USERS).map(n => `<option>${n}</option>`).join('');
+  sel.value = cur;
+  const mf = document.getElementById('logMonthFilter');
+  if (!mf.value) mf.value = fmtDT(new Date()).slice(0, 7);
+  renderAccessLogTable();
+}
+
+function renderAccessLogTable() {
+  const u = document.getElementById('logUserFilter').value;
+  const mo = document.getElementById('logMonthFilter').value;
+  const rows = accessLogRows.filter(x => (!u || x.name === u) && (!mo || x.login.startsWith(mo)));
+  const badge = t => {
+    const c = { '로그아웃': 'secondary', '창닫음': 'info', '접속 중': 'success', '기록 끊김': 'warning' }[t] || 'light';
+    return `<span class="badge bg-${c}">${t}</span>`;
+  };
+  document.getElementById('logTbody').innerHTML = rows.length ? rows.map(x => `<tr>
+      <td>${x.name}</td><td>${x.role}</td><td>${x.login}</td>
+      <td>${x.endType === '접속 중' ? '-' : x.out}</td>
+      <td class="text-end">${fmtDur(x.mins)}</td><td>${badge(x.endType)}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="text-center text-muted py-4">기록이 없습니다.</td></tr>';
+  // 사용자별 합계
+  const sum = {};
+  rows.forEach(x => { sum[x.name] = sum[x.name] || { n: 0, m: 0 }; sum[x.name].n++; sum[x.name].m += x.mins; });
+  document.getElementById('logSummary').innerHTML = '<div class="row g-2">' + Object.entries(sum).map(([n, v]) =>
+    `<div class="col-6 col-md-3"><div class="card p-2"><div style="font-weight:600">${n}</div>
+     <div style="font-size:.8rem;color:#64748b">${v.n}회 · 총 ${fmtDur(v.m)}</div></div></div>`).join('') + '</div>';
 }
 
 async function ensurePwSheet() {
@@ -994,6 +1137,7 @@ async function changePassword() {
 }
 
 function logout() {
+  endAccessLog('로그아웃');
   S.user = null; S.perm = null; S.googleToken = null;
   selectedUser = null;
   S.data = { sites:[], deliveries:[], ordersDH:[], ordersMG:[], customers:[] };
@@ -1072,7 +1216,8 @@ function showPage(id) {
     order: renderOrderList,
     inventory: renderInventory,
     cust: renderCustomers,
-    stats: renderStats
+    stats: renderStats,
+    accesslog: renderAccessLog
   };
   if (renders[id]) renders[id]();
   setTimeout(enableAllTableResize, 0);
