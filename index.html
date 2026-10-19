@@ -649,6 +649,33 @@ tbody tr:hover{background:#f8fafc}
               <div id="d_siteSummaryBody"></div>
             </div>
           </div>
+          <!-- 차량종류 · 화물비 (canEditDeliveryCost 권한자만 표시) -->
+          <div class="col-12" id="d_costWrap">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">차량종류</label>
+                <select class="form-select" id="d_car">
+                  <option value="">선택</option>
+                  <option>1톤</option>
+                  <option>1.4톤</option>
+                  <option>2.5톤</option>
+                  <option>3.5톤</option>
+                  <option>5톤</option>
+                  <option>11톤</option>
+                  <option>25톤</option>
+                  <option>트레일러</option>
+                  <option>택배</option>
+                  <option>직접수령</option>
+                  <option>기타</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">화물비 (원)</label>
+                <input type="number" class="form-control" id="d_fee" placeholder="예) 350000" min="0" step="1000">
+                <div class="form-text">이 출고 건 전체 운송비를 한 번만 입력</div>
+              </div>
+            </div>
+          </div>
           <!-- 비고 -->
           <div class="col-12">
             <label class="form-label">비고</label>
@@ -793,7 +820,8 @@ const USERS = {
   '강철':   { role:'대표자',   pw:'0000',
     canPrice:true, canEditSite:true, canDeleteSite:true,
     canEditDelivery:true, canDeleteDelivery:true,
-    canEditDeliveryCost:true, canViewDeliveryCost:true,
+    // 화물비 입력은 공장장(최강현) 전용 — 대표자도 입력하려면 아래를 true 로
+    canEditDeliveryCost:false, canViewDeliveryCost:true,
     canOrder:true, canInputReceive:false, canViewDefect:true,
     canCust:true, canStats:true, canViewLog:true },
   '강명구': { role:'기성담당', pw:'0000',
@@ -1185,6 +1213,8 @@ function applyPermUI() {
   el('dhAddBtn', S.perm.canOrder);
   el('mgAddBtn', S.perm.canOrder);
   el('custAddBtn', S.perm.canCust);
+  // 차량종류·화물비 입력칸 (공장장 등 canEditDeliveryCost 권한자만)
+  el('d_costWrap', S.perm.canEditDeliveryCost);
   // price columns in orders
   const thDA = document.getElementById('dh-th-amount');
   const thMA = document.getElementById('mg-th-amount');
@@ -1424,7 +1454,9 @@ function mkDelivery(r, i, colMap, siteByName) {
     biasSetQty:       item==='BIAS셋' ? qty : 0,
     smaStandaloneQty: 0,
     color:'',
-    note: String(get('비고')||'')
+    note: String(get('비고')||''),
+    car: String(get('차량종류')||'').trim(),
+    fee: +String(get('화물비')||'').replace(/[^\d.-]/g,'') || 0
   };
 }
 
@@ -3040,7 +3072,7 @@ function renderDeliveryList() {
           <td class="text-nowrap">${specCell}</td>
           <td class="text-muted">${d.color||'-'}</td>
           <td class="text-center fw-bold">${d.qty||0}</td>
-          ${S.perm?.canViewDeliveryCost?`<td class="text-muted">-</td>`:''}
+          ${S.perm?.canViewDeliveryCost?`<td class="text-nowrap">${d.car||d.fee?`${d.car||''}${(d.car&&d.fee)?' · ':''}${d.fee?`<b>${d.fee.toLocaleString()}</b>원`:''}`:'<span class="text-muted">-</span>'}</td>`:''}
           <td class="text-muted">${d.note||'-'}</td>
           <td>
             ${(S.perm?.canEditDelivery||S.perm?.canEditSite)?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDlvModal('${d.id}')"><i class="bi bi-pencil"></i></button>`:''}
@@ -3187,11 +3219,15 @@ function openDlvModal(id) {
   document.getElementById('d_date').value=new Date().toISOString().slice(0,10);
   document.getElementById('d_items').innerHTML='';
   document.getElementById('d_note').value = '';
+  document.getElementById('d_car').value = '';
+  document.getElementById('d_fee').value = '';
   if(isEdit){
     const d=S.data.deliveries.find(x=>x.id===id); if(!d) return;
     document.getElementById('d_siteId').value=d.siteId;
     document.getElementById('d_date').value=d.date;
     document.getElementById('d_note').value = d.note || '';
+    document.getElementById('d_car').value = d.car || '';
+    document.getElementById('d_fee').value = d.fee || '';
     addDlvItem({ item:d.item||'루버', spec:d.spec, qty:d.qty });
   } else {
     addDlvItem(); // 신규: 빈 항목 1개로 시작
@@ -3347,7 +3383,13 @@ async function saveDelivery() {
   const colCount = Math.max(...Object.values(colMap)) + 1;
   const lastCol = colLetter(colCount-1);
   const note = document.getElementById('d_note').value.trim();
-  const buildRow = it => {
+  // 차량종류·화물비: canEditDeliveryCost 권한자만 입력.
+  // 권한 없는 사람이 납품을 수정해도 기존 값이 지워지지 않도록 원래 값을 그대로 보존한다.
+  const canCost  = !!(S.perm && S.perm.canEditDeliveryCost);
+  const prevDlv  = S.editingIds.dlv ? S.data.deliveries.find(x=>x.id===S.editingIds.dlv) : null;
+  const car = canCost ? document.getElementById('d_car').value       : (prevDlv ? (prevDlv.car||'') : '');
+  const fee = canCost ? (+document.getElementById('d_fee').value||0) : (prevDlv ? (prevDlv.fee||0)  : 0);
+  const buildRow = (it, i) => {
     const row = new Array(colCount).fill('');
     const setByHeader = (names, val) => {
       for (const n of names){
@@ -3363,6 +3405,9 @@ async function saveDelivery() {
     setByHeader(['세로'],                    it.specH);
     setByHeader(['개수'],                    it.qty);
     setByHeader(['비고'],                    note);
+    setByHeader(['차량종류'],                car);
+    // 화물비는 출고 1건당 한 번만 기록 (항목마다 넣으면 운송비 합계가 중복된다)
+    setByHeader(['화물비'],                  i===0 ? (fee||'') : '');
     return row;
   };
   const rows = items.map(buildRow);
