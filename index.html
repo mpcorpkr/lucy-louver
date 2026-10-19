@@ -1204,9 +1204,9 @@ function applyPermUI() {
   // unit price column
   const thPrice = document.getElementById('th-unitPrice');
   if (thPrice) thPrice.style.display = S.perm.canPrice ? '' : 'none';
-  // delivery cost column
+  // delivery cost column — 차량종류·화물비는 전원 조회 가능
   const thCost = document.getElementById('dlv-th-cost');
-  if (thCost) thCost.style.display = S.perm.canViewDeliveryCost ? '' : 'none';
+  if (thCost) thCost.style.display = '';
   // buttons
   el('siteAddBtn', S.perm.canEditSite);
   el('dlvAddBtn', S.perm.canEditDelivery || S.perm.canEditSite);
@@ -1458,6 +1458,15 @@ function mkDelivery(r, i, colMap, siteByName) {
     car: String(get('차량종류')||'').trim(),
     fee: +String(get('화물비')||'').replace(/[^\d.-]/g,'') || 0
   };
+}
+
+// 차량종류 · 화물비 표시용 문자열 (권한 구분 없이 전원 조회 가능)
+function dlvCostText(d){
+  const car = (d && d.car) ? String(d.car) : '';
+  const fee = (d && d.fee) ? Number(d.fee).toLocaleString()+'원' : '';
+  if (!car && !fee) return '';
+  if (car && fee)   return `${car} · <b>${fee}</b>`;
+  return car || `<b>${fee}</b>`;
 }
 
 function mkOrderDH(r, i) {
@@ -2596,9 +2605,12 @@ function openSiteDetail(id) {
       <td>${d.color||'-'}</td>
       <td class="text-center fw-bold">${d.qty}</td>
       <td class="text-center fw-bold text-primary">${cum} <small class="text-muted">(${cumPct}%)</small></td>
+      <td class="text-nowrap">${dlvCostText(d)||'<small class="text-muted">-</small>'}</td>
       <td><small class="text-muted">${d.note||'-'}</small></td>
     </tr>`;
   }).join('');
+  // 이 현장의 운송비 합계 (화물비는 출고 1건당 1행에만 기록되므로 그대로 더하면 됨)
+  const siteFeeSum = [...allNameDlvs].reduce((s,d)=>s+(d.fee||0),0);
 
   // 🔧 마감자재 납품 이력 (날짜순 누적계산 → 사용자 정렬 적용)
   const finSort = S.siteFinishSort || {col:'date', dir:'asc'};
@@ -2761,6 +2773,7 @@ function openSiteDetail(id) {
                     <th>납품일</th><th>규격</th><th>색상</th>
                     <th class="text-center">수량</th>
                     <th class="text-center">누적합계</th>
+                    <th class="text-nowrap">차량/화물비</th>
                     <th>비고</th>
                   </tr>
                 </thead>
@@ -2770,6 +2783,7 @@ function openSiteDetail(id) {
                     <td colspan="3" class="fw-bold text-end">합계</td>
                     <td class="text-center fw-bold text-success">${dlvd}</td>
                     <td class="text-center fw-bold">${dlvd}/${s.qty} (${pct}%)</td>
+                    <td class="text-nowrap fw-bold">${siteFeeSum?`운송비 ${siteFeeSum.toLocaleString()}원`:''}</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -2998,8 +3012,9 @@ function renderDeliveryList() {
   try {
     const qRaw = (document.getElementById('dlvSearch')?.value || '');
     const q = qRaw.toLowerCase().trim();
+    // 차량/화물비 열은 전원 조회 가능 — 항상 표시
     const thCost = document.getElementById('dlv-th-cost');
-    if (thCost) thCost.style.display = S.perm?.canViewDeliveryCost ? '' : 'none';
+    if (thCost) thCost.style.display = '';
     const sort = S.dlvSort || {col:'date', dir:'desc'};
     const mult = sort.dir==='asc' ? 1 : -1;
 
@@ -3072,7 +3087,7 @@ function renderDeliveryList() {
           <td class="text-nowrap">${specCell}</td>
           <td class="text-muted">${d.color||'-'}</td>
           <td class="text-center fw-bold">${d.qty||0}</td>
-          ${S.perm?.canViewDeliveryCost?`<td class="text-nowrap">${d.car||d.fee?`${d.car||''}${(d.car&&d.fee)?' · ':''}${d.fee?`<b>${d.fee.toLocaleString()}</b>원`:''}`:'<span class="text-muted">-</span>'}</td>`:''}
+          <td class="text-nowrap">${dlvCostText(d)||'<span class="text-muted">-</span>'}</td>
           <td class="text-muted">${d.note||'-'}</td>
           <td>
             ${(S.perm?.canEditDelivery||S.perm?.canEditSite)?`<button class="btn btn-sm btn-outline-primary me-1" onclick="openDlvModal('${d.id}')"><i class="bi bi-pencil"></i></button>`:''}
@@ -3113,6 +3128,8 @@ function openDlvSiteDetail(siteName) {
     .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const smaSum  = finishDlvs.filter(d=>d.item==='SMA셋' ).reduce((s,d)=>s+(d.qty||0),0);
   const biasSum = finishDlvs.filter(d=>d.item==='BIAS셋').reduce((s,d)=>s+(d.qty||0),0);
+  // 이 현장 운송비 합계 (화물비는 출고 1건당 1행에만 기록되므로 그대로 더한다)
+  const siteFeeTotal = dlvs.reduce((s,d)=>s+(d.fee||0),0);
   // 계약 통계
   const contractQty = site?.qty || 0;
   const remLouver = contractQty - totalLouver;
@@ -3161,6 +3178,7 @@ function openDlvSiteDetail(siteName) {
                 <th>규격</th>
                 <th class="text-center">개수</th>
                 <th class="text-center">누적합계</th>
+                <th class="text-nowrap">차량/화물비</th>
               </tr>
             </thead>
             <tbody>${louverDesc.map(d=>`<tr>
@@ -3168,12 +3186,14 @@ function openDlvSiteDetail(siteName) {
               <td>${d.spec?`${d.spec}mm`:'-'}</td>
               <td class="text-center fw-bold">${(d.qty||0).toLocaleString()}개</td>
               <td class="text-center fw-bold text-primary">${(d._cum||0).toLocaleString()}개</td>
+              <td class="text-nowrap">${dlvCostText(d)||'<span class="text-muted">-</span>'}</td>
             </tr>`).join('')}</tbody>
             <tfoot style="background:#f1f5f9">
               <tr>
                 <td colspan="2" class="fw-bold text-end">합계</td>
                 <td class="text-center fw-bold text-success">${totalLouver.toLocaleString()}개</td>
                 <td></td>
+                <td class="text-nowrap fw-bold">${siteFeeTotal?`운송비 ${siteFeeTotal.toLocaleString()}원`:''}</td>
               </tr>
             </tfoot>
           </table>
